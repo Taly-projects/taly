@@ -1,10 +1,15 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
+const translator = @import("translator.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
+    
+    const stdout = std.io.getStdOut();        
+
+    stdout.writeAll("### Lexer ###\n") catch unreachable;
 
     var lex = lexer.Lexer.init("fn main() => \n\tprintln(\"Hello, world!\")");
     // var lex = lexer.Lexer.init("println(\"Hello, world\")");
@@ -14,12 +19,20 @@ pub fn main() !void {
         std.log.info("{}", .{token});
     }
 
+    stdout.writeAll("\n\n### Parser ###\n") catch unreachable;
+
     var par = parser.Parser.init(tokens, arena.allocator());
     const ast = par.parse();
-    
-    const stdout = std.io.getStdOut();        
     for (ast.items) |node| {
         node.writeXML(stdout.writer(), 0) catch unreachable;
-        // std.log.info("{}", .{node});
+    }
+
+    stdout.writeAll("\n\n### Translator ###\n") catch unreachable;
+
+    var tra = translator.Translator.init(ast, arena.allocator());
+    const c_ast = tra.translate();
+    
+    for (c_ast.items) |node| {
+        node.writeXML(stdout.writer(), 0) catch unreachable;
     }
 }
