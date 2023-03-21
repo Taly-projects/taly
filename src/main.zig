@@ -35,4 +35,13 @@ pub fn main() !void {
     for (c_ast.items) |node| {
         node.writeXML(stdout.writer(), 0) catch unreachable;
     }
+
+    stdout.writeAll("\n\n### Generated (C) ###\n") catch unreachable;
+
+    for (c_ast.items) |node| {
+        if (node.writeC(stdout.writer(), 0) catch unreachable) {
+            stdout.writeAll(";") catch unreachable;
+        }
+        stdout.writeAll("\n") catch unreachable;
+    }
 }

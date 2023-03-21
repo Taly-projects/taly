@@ -8,6 +8,19 @@ pub const ValueNodeTag = enum {
 pub const ValueNode = union(ValueNodeTag) {
     String: []const u8,
 
+    pub fn writeC(self: *const ValueNode, writer: anytype, tabs: usize) anyerror!bool {
+        switch (self.*) {
+            .String => |str| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                try std.fmt.format(writer, "\"{s}\"", .{str});
+                return true;
+            }
+        }
+    }
+
     pub fn writeXML(self: *const ValueNode, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
             .String => |str| {
@@ -25,6 +38,10 @@ pub const ValueNode = union(ValueNodeTag) {
 pub const FunctionDefinitionParameter = struct {
     name: []const u8,
     data_type: []const u8,
+
+    pub fn writeC(self: *const FunctionDefinitionParameter, writer: anytype) anyerror!void {
+        try std.fmt.format(writer, "{s} {s}", .{ self.data_type, self.name });
+    }
 
     pub fn writeXML(self: *const FunctionDefinitionParameter, writer: anytype, tabs: usize) anyerror!void {
         // Add tabs
@@ -61,6 +78,22 @@ pub const FunctionHeader = struct {
     name: []const u8,
     parameters: FunctionDefinitionParameters,
     return_type: []const u8,
+
+    pub fn writeC(self: *const FunctionHeader, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "{s} {s}(", .{self.return_type, self.name});
+        i = 0;
+        for (self.parameters.items) |param| {
+            if (i != 0) try writer.writeAll(", ");
+            _ = try param.writeC(writer);
+            i += 1;
+        }
+        try writer.writeAll(")");
+        return true;
+    }
 
     pub fn writeXML(self: *const FunctionHeader, writer: anytype, tabs: usize) anyerror!void {
         // Add tabs
@@ -114,6 +147,39 @@ pub const FunctionSource = struct {
     parameters: FunctionDefinitionParameters,
     return_type: []const u8,
     body: NodeList,
+
+    pub fn writeC(self: *const FunctionSource, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "{s} {s}(", .{self.return_type, self.name});
+        i = 0;
+        for (self.parameters.items) |param| {
+            if (i != 0) try writer.writeAll(", ");
+            _ = try param.writeC(writer);
+            i += 1;
+        }
+        try writer.writeAll(") {");
+        i = 0;
+        for (self.body.items) |node|  {
+            if (i == 0) try writer.writeAll("\n");
+            // Add tabs
+            var j: usize = 0;
+            while (j < tabs) : (j += 1) try writer.writeAll("\t");
+            if (try node.writeC(writer, tabs + 1)) {
+                try writer.writeAll(";");
+            }
+            i += 1;
+        }
+        if (self.body.items.len != 0) {
+            try writer.writeAll("\n");
+            i = 0;
+            while (i < tabs) : (i += 1) try writer.writeAll("\t");
+            try writer.writeAll("}");
+        }
+        return false;
+    }
 
     pub fn writeXML(self: *const FunctionSource, writer: anytype, tabs: usize) anyerror!void {
         // Add tabs
@@ -184,6 +250,23 @@ pub const FunctionCallNode = struct {
     name: []const u8,
     parameters: NodeList,
 
+    pub fn writeC(self: *const FunctionCallNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "{s}(", .{self.name});
+        i = 0;
+        for (self.parameters.items) |param| {
+            if (i != 0) try writer.writeAll(", ");
+            _ = try param.writeC(writer, 0);
+            i += 1;
+        }
+        try writer.writeAll(")");
+
+        return true;
+    }
+
     pub fn writeXML(self: *const FunctionCallNode, writer: anytype, tabs: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
@@ -235,6 +318,15 @@ pub const Node = union(NodeTag) {
     FunctionHeader: FunctionHeader,
     FunctionSource: FunctionSource,
     FunctionCall: FunctionCallNode,
+
+    pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
+        switch (self.*) {
+            .Value => |node| return node.writeC(writer, tabs),
+            .FunctionHeader => |node| return node.writeC(writer, tabs),
+            .FunctionSource => |node| return node.writeC(writer, tabs),
+            .FunctionCall => |node| return node.writeC(writer, tabs),
+        }
+    }
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
