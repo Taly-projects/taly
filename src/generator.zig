@@ -35,8 +35,8 @@ pub const Generator = struct {
             if (i == node.body.items.len - 1) {
                 if (std.mem.eql(u8, node.name, "main")) {
                     if (gen != parser.NodeTag.Return) {
-                        body.append(gen) catch unreachable;
                         var return_value: ?*parser.Node = self.allocator.create(parser.Node) catch unreachable;
+                        body.append(gen) catch unreachable;
                         return_value.?.* = . { 
                             .Value = . { 
                                 .Int = "0"
@@ -49,6 +49,13 @@ pub const Generator = struct {
                         };
                     }
                 } else {
+                    var return_value: ?*parser.Node = self.allocator.create(parser.Node) catch unreachable;
+                    return_value.?.* = gen;
+                    gen = . {
+                        .Return = . {
+                            .value = return_value
+                        }
+                    };
                     // TODO: Automatic return
                 }
             }

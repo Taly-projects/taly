@@ -406,6 +406,7 @@ pub const Parser = struct {
         }
         
         var body = NodeList.init(self.allocator);
+        var last_index = self.index;
         if (self.getCurrent() != null) {
             current = self.getCurrent().?;
             if (current.isSymbol(lexer.TokenSymbol.RightDoubleArrow)) {
@@ -425,6 +426,7 @@ pub const Parser = struct {
                     } else if (first or tab_count >= self.tabs) {
                         const node = self.parseCurrent();
                         body.append(node) catch unreachable;
+                        last_index = self.index;
                     } else {
                         break;
                     }
@@ -432,6 +434,7 @@ pub const Parser = struct {
                 self.tabs -= 1;
             }
         }
+        self.index = last_index;
 
         return . {
             .FunctionDefinition = . {
