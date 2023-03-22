@@ -2,6 +2,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const translator = @import("translator.zig");
+const generator = @import("generator.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -30,8 +31,6 @@ pub fn main() !void {
         std.log.info("{}", .{token});
     }
 
-    stdout.writeAll("\n\n### Parser ###\n") catch unreachable;
-
     var par = parser.Parser.init(tokens, arena.allocator());
     const ast = par.parse();
 
@@ -43,9 +42,20 @@ pub fn main() !void {
         node.writeXML(parser_out.writer(), 0) catch unreachable;
     }
 
-    stdout.writeAll("\n\n### Translator ###\n") catch unreachable;
+    // Generator
+    var gen = generator.Generator.init(ast, arena.allocator());
+    const gen_ast = gen.generate();
 
-    var tra = translator.Translator.init(ast, arena.allocator());
+    // Create Output File
+    var generator_out = try out_dir.createFile("generator.xml", .{});
+    defer generator_out.close();
+
+    for (gen_ast.items) |node| {
+        node.writeXML(generator_out.writer(), 0) catch unreachable;
+    }
+    
+    // Translator
+    var tra = translator.Translator.init(gen_ast, arena.allocator());
     const c_ast = tra.translate();
 
     // Create Output File
@@ -55,8 +65,6 @@ pub fn main() !void {
     for (c_ast.items) |node| {
         node.writeXML(translator_out.writer(), 0) catch unreachable;
     }
-
-    stdout.writeAll("\n\n### Generated (C) ###\n") catch unreachable;
 
     // Create Output File
     var c_out = try out_dir.createFile("main.c", .{});
