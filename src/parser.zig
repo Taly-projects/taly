@@ -200,11 +200,34 @@ pub const UseNode = struct {
     }
 };
 
+pub const ReturnNode = struct {
+    value: ?*Node,
+
+    pub fn writeXML(self: *const ReturnNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<return>\n");
+
+        if (self.value) |value| {
+            try value.writeXML(writer, tabs + 1);
+        }
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</return>\n");
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
     FunctionCall,
     Use,
+    Return
 };
 
 pub const Node = union(NodeTag) {
@@ -212,6 +235,7 @@ pub const Node = union(NodeTag) {
     FunctionDefinition: FunctionDefinitionNode,
     FunctionCall: FunctionCallNode,
     Use: UseNode,
+    Return: ReturnNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -219,6 +243,7 @@ pub const Node = union(NodeTag) {
             .FunctionDefinition => |node| return node.writeXML(writer, tabs),
             .FunctionCall => |node| return node.writeXML(writer, tabs),
             .Use => |node| return node.writeXML(writer, tabs),
+            .Return => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -231,6 +256,7 @@ pub const Node = union(NodeTag) {
             .FunctionDefinition => |node| node.writeXML(writer, 0) catch unreachable,
             .FunctionCall => |node| node.writeXML(writer, 0) catch unreachable,
             .Use => |node| node.writeXML(writer, 0) catch unreachable,
+            .Return => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -407,7 +433,7 @@ pub const Parser = struct {
         }
         self.parseExpr();
     }
-    
+
     fn handleConstant(self: *Parser, value: lexer.TokenConstant) Node {
         switch (value) {
             .String => |str| {
@@ -458,6 +484,24 @@ pub const Parser = struct {
         };
     }
 
+    fn parseReturn(self: *Parser) Node {
+        self.advance();
+
+        var value: ?*Node = null;
+        if (self.getCurrent()) |current| {
+            if (!current.isFormat(lexer.TokenFormat.NewLine)) {
+                value = self.allocator.create(Node) catch unreachable;
+                value.?.* = self.parseExpr();
+            }
+        }
+
+        return Node {
+            .Return = .{
+                .value = value
+            }
+        };
+    }
+
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         switch (keyword) {
             .Fn => return self.parseFunctionDefinition(false),
@@ -467,6 +511,7 @@ pub const Parser = struct {
                 return self.parseFunctionDefinition(true);
             },
             .Use => return self.parseUse(),
+            .Return => return self.parseReturn(),
         }
     }
 
@@ -492,7 +537,13 @@ pub const Parser = struct {
 
         while (self.getCurrent() != null) {
             nodes.append(self.parseCurrent()) catch unreachable;
-            // self.advance();
+            if (self.getCurrent()) |current| {
+                if (!current.isFormat(lexer.TokenFormat.NewLine)) {
+                    std.log.err("Unexpected Token '{}', should be NL", .{current});
+                    @panic("");
+                } 
+                self.advance();
+            } 
         }
 
         return nodes;

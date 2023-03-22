@@ -163,7 +163,7 @@ pub const FunctionSource = struct {
         try writer.writeAll(") {");
         i = 0;
         for (self.body.items) |node|  {
-            if (i == 0) try writer.writeAll("\n");
+            try writer.writeAll("\n");
             // Add tabs
             var j: usize = 0;
             while (j < tabs) : (j += 1) try writer.writeAll("\t");
@@ -310,8 +310,6 @@ pub const IncludeNode = struct {
     std: bool,
     path: []const u8,
 
-
-
     pub fn writeC(self: *const IncludeNode, writer: anytype, tabs: usize) anyerror!bool {
         // Add tabs
         var i: usize = 0;
@@ -355,12 +353,55 @@ pub const IncludeNode = struct {
     }
 };
 
+pub const ReturnNode = struct {
+    value: ?*Node,
+
+    pub fn writeC(self: *const ReturnNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "return ", .{});
+
+        if (self.value) |value| {
+            _ = try value.writeC(writer, 0);
+        }
+
+        return true;
+    }
+
+    pub fn writeXML(self: *const ReturnNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<return>");
+
+        if (self.value) |value| {
+            try writer.writeAll("\n");
+            try value.writeXML(writer, tabs + 1);
+
+            // Add tabs
+            i = 0;        
+            while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        }
+
+        // Add tabs
+        i = 0;        
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</return>\n");
+    }
+    
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionHeader,
     FunctionSource,
     FunctionCall,
     Include,
+    Return,
 };
 
 pub const Node = union(NodeTag) {
@@ -369,6 +410,7 @@ pub const Node = union(NodeTag) {
     FunctionSource: FunctionSource,
     FunctionCall: FunctionCallNode,
     Include: IncludeNode,
+    Return: ReturnNode,
 
     pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -377,6 +419,7 @@ pub const Node = union(NodeTag) {
             .FunctionSource => |node| return node.writeC(writer, tabs),
             .FunctionCall => |node| return node.writeC(writer, tabs),
             .Include => |node| return node.writeC(writer, tabs),
+            .Return => |node| return node.writeC(writer, tabs),
         }
     }
 
@@ -387,6 +430,7 @@ pub const Node = union(NodeTag) {
             .FunctionSource => |node| return node.writeXML(writer, tabs),
             .FunctionCall => |node| return node.writeXML(writer, tabs),
             .Include => |node| return node.writeXML(writer, tabs),
+            .Return => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -400,6 +444,7 @@ pub const Node = union(NodeTag) {
             .FunctionSource => |node| node.writeXML(writer, 0) catch unreachable,
             .FunctionCall => |node| node.writeXML(writer, 0) catch unreachable,
             .Include => |node| node.writeXML(writer, 0) catch unreachable,
+            .Return => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -509,6 +554,25 @@ pub const Translator = struct {
         return null;
     }
 
+    fn translateReturn(self: *Translator, return_node: parser.ReturnNode) NodeList {
+        var res = NodeList.init(self.allocator);
+        var new_value: ?*Node = null;
+        if (return_node.value) |value| {
+            new_value = self.allocator.create(Node) catch unreachable;
+            var node_res = self.translateNode(value.*);
+            new_value.?.* = node_res.pop();
+            res.appendSlice(node_res.items) catch unreachable;
+        }
+
+        res.append(Node {
+            .Return = . {
+                .value = new_value
+            }
+        }) catch unreachable;
+
+        return res;
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
         var res = NodeList.init(self.allocator);
         switch (node) {
@@ -519,7 +583,8 @@ pub const Translator = struct {
                 if (self.translateUse(use)) |res_node| {
                     res.append(res_node) catch unreachable;
                 } 
-            }
+            },
+            .Return => |ret| res.appendSlice(self.translateReturn(ret).items) catch unreachable,
         }
         return res;
     }

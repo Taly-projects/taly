@@ -3,4 +3,5 @@ use "std-stdio"
 extern fn printf(msg: c_string)
 
 fn main() =>
-    printf("Hello, world")
+	printf("Hello, world")
+	return "test"

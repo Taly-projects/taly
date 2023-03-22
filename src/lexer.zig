@@ -4,6 +4,7 @@ pub const TokenKeyword = enum {
     Fn,
     Extern,
     Use,
+    Return,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         if (std.mem.eql(u8, data, "fn")) {
@@ -12,6 +13,8 @@ pub const TokenKeyword = enum {
             return TokenKeyword.Extern;
         } else if (std.mem.eql(u8, data, "use")) {
             return TokenKeyword.Use;
+        } else if (std.mem.eql(u8, data, "return")) {
+            return TokenKeyword.Return;
         }
 
         return null;
@@ -25,6 +28,7 @@ pub const TokenKeyword = enum {
             .Fn => return std.fmt.format(writer, "fn", .{}),
             .Use => return std.fmt.format(writer, "use", .{}),
             .Extern => return std.fmt.format(writer, "extern", .{}),
+            .Return => return std.fmt.format(writer, "return", .{}),
         }
     }
 };
