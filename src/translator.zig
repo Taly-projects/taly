@@ -2,11 +2,15 @@ const std = @import("std");
 const parser = @import("parser.zig");
 
 pub const ValueNodeTag = enum {
-    String
+    String,
+    Int,
+    Float,
 };
 
 pub const ValueNode = union(ValueNodeTag) {
     String: []const u8,
+    Int: []const u8,
+    Float: []const u8,
 
     pub fn writeC(self: *const ValueNode, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -16,6 +20,22 @@ pub const ValueNode = union(ValueNodeTag) {
                 while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
                 try std.fmt.format(writer, "\"{s}\"", .{str});
+                return true;
+            },
+            .Int => |num| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                try std.fmt.format(writer, "{s}", .{num});
+                return true;
+            },
+            .Float => |num| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                try std.fmt.format(writer, "{s}", .{num});
                 return true;
             }
         }
@@ -29,6 +49,20 @@ pub const ValueNode = union(ValueNodeTag) {
                 while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
                 return std.fmt.format(writer, "<string>{s}</string>\n", .{str});
+            },
+            .Int => |num| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                return std.fmt.format(writer, "<int>{s}</int>\n", .{num});
+            },
+            .Float => |num| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                return std.fmt.format(writer, "<float>{s}</float>\n", .{num});
             }
         }
     }
@@ -163,7 +197,7 @@ pub const FunctionSource = struct {
         try writer.writeAll(") {");
         i = 0;
         for (self.body.items) |node|  {
-            if (i == 0) try writer.writeAll("\n");
+            try writer.writeAll("\n");
             // Add tabs
             var j: usize = 0;
             while (j < tabs) : (j += 1) try writer.writeAll("\t");
@@ -176,8 +210,8 @@ pub const FunctionSource = struct {
             try writer.writeAll("\n");
             i = 0;
             while (i < tabs) : (i += 1) try writer.writeAll("\t");
-            try writer.writeAll("}");
         }
+        try writer.writeAll("}");
         return false;
     }
 
@@ -306,11 +340,98 @@ pub const FunctionCallNode = struct {
     }
 };
 
+pub const IncludeNode = struct {
+    std: bool,
+    path: []const u8,
+
+    pub fn writeC(self: *const IncludeNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "#include ", .{});
+
+        if (self.std) {
+            try std.fmt.format(writer, "<{s}.h>", .{self.path});
+        } else {
+            try std.fmt.format(writer, "\"{s}.h\"", .{self.path});
+        }
+
+        return false;
+    }
+
+    pub fn writeXML(self: *const IncludeNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<include>\n");
+
+        // Add tabs (+ 1)
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        
+        try std.fmt.format(writer, "<std>{}</std>\n", .{self.std});
+
+        // Add tabs (+ 1)
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        
+        try std.fmt.format(writer, "<path>{s}</path>\n", .{self.path});
+
+        // Add tabs
+        i = 0;        
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</include>\n");
+    }
+};
+
+pub const ReturnNode = struct {
+    value: ?*Node,
+
+    pub fn writeC(self: *const ReturnNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "return ", .{});
+
+        if (self.value) |value| {
+            _ = try value.writeC(writer, 0);
+        }
+
+        return true;
+    }
+
+    pub fn writeXML(self: *const ReturnNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<return>");
+
+        if (self.value) |value| {
+            try writer.writeAll("\n");
+            try value.writeXML(writer, tabs + 1);
+
+            // Add tabs
+            i = 0;        
+            while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        }
+
+        try writer.writeAll("</return>\n");
+    }
+    
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionHeader,
     FunctionSource,
-    FunctionCall
+    FunctionCall,
+    Include,
+    Return,
 };
 
 pub const Node = union(NodeTag) {
@@ -318,6 +439,8 @@ pub const Node = union(NodeTag) {
     FunctionHeader: FunctionHeader,
     FunctionSource: FunctionSource,
     FunctionCall: FunctionCallNode,
+    Include: IncludeNode,
+    Return: ReturnNode,
 
     pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -325,6 +448,8 @@ pub const Node = union(NodeTag) {
             .FunctionHeader => |node| return node.writeC(writer, tabs),
             .FunctionSource => |node| return node.writeC(writer, tabs),
             .FunctionCall => |node| return node.writeC(writer, tabs),
+            .Include => |node| return node.writeC(writer, tabs),
+            .Return => |node| return node.writeC(writer, tabs),
         }
     }
 
@@ -334,6 +459,8 @@ pub const Node = union(NodeTag) {
             .FunctionHeader => |node| return node.writeXML(writer, tabs),
             .FunctionSource => |node| return node.writeXML(writer, tabs),
             .FunctionCall => |node| return node.writeXML(writer, tabs),
+            .Include => |node| return node.writeXML(writer, tabs),
+            .Return => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -346,6 +473,8 @@ pub const Node = union(NodeTag) {
             .FunctionHeader => |node| node.writeXML(writer, 0) catch unreachable,
             .FunctionSource => |node| node.writeXML(writer, 0) catch unreachable,
             .FunctionCall => |node| node.writeXML(writer, 0) catch unreachable,
+            .Include => |node| node.writeXML(writer, 0) catch unreachable,
+            .Return => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -376,12 +505,16 @@ pub const Translator = struct {
     fn translateValueNode(self: *Translator, value: parser.ValueNode) Node {
         _ = self;
         switch (value) {
-            .String => |str| return Node { .Value = . { .String = str } }
+            .String => |str| return Node { .Value = . { .String = str } },
+            .Int => |num| return Node { .Value = . { .Int = num } },
+            .Float => |num| return Node { .Value = . { .Float = num } },
         }
     }
 
     fn translateFunctionDefinition(self: *Translator, function_def: parser.FunctionDefinitionNode) NodeList {
         var res = NodeList.init(self.allocator);
+
+        if (function_def.external) return res;
 
         var parameters = FunctionDefinitionParameters.init(self.allocator);
         for (function_def.parameters.items) |param| {
@@ -432,12 +565,58 @@ pub const Translator = struct {
         };
     }
 
+    fn translateUse(self: *Translator, use: parser.UseNode) ?Node {
+        _ = self;
+        if (std.mem.startsWith(u8, use.path, "std-")) {
+            return Node {
+                .Include = .{
+                    .std = true,
+                    .path = use.path[4..]
+                }
+            };
+        } else if (std.mem.startsWith(u8, use.path, "c-")) {
+            return Node {
+                .Include = .{
+                    .std = false,
+                    .path = use.path[2..]
+                }
+            };
+        } 
+
+        return null;
+    }
+
+    fn translateReturn(self: *Translator, return_node: parser.ReturnNode) NodeList {
+        var res = NodeList.init(self.allocator);
+        var new_value: ?*Node = null;
+        if (return_node.value) |value| {
+            new_value = self.allocator.create(Node) catch unreachable;
+            var node_res = self.translateNode(value.*);
+            new_value.?.* = node_res.pop();
+            res.appendSlice(node_res.items) catch unreachable;
+        }
+
+        res.append(Node {
+            .Return = . {
+                .value = new_value
+            }
+        }) catch unreachable;
+
+        return res;
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
         var res = NodeList.init(self.allocator);
         switch (node) {
             .Value => |value| res.append(self.translateValueNode(value)) catch unreachable,
             .FunctionDefinition => |function_def| res.appendSlice(self.translateFunctionDefinition(function_def).items) catch unreachable,
             .FunctionCall => |function_call| res.append(self.translateFunctionCall(function_call)) catch unreachable,
+            .Use => |use| {
+                if (self.translateUse(use)) |res_node| {
+                    res.append(res_node) catch unreachable;
+                } 
+            },
+            .Return => |ret| res.appendSlice(self.translateReturn(ret).items) catch unreachable,
         }
         return res;
     }
