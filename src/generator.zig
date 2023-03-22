@@ -22,10 +22,24 @@ pub const Generator = struct {
         self.index += 1;
     }
 
+    fn generateType(self: *Generator, data_type: []const u8) []const u8 {
+        _ = self;
+
+        if (std.mem.eql(u8, data_type, "c_int")) return "int"
+        else if (std.mem.eql(u8, data_type, "c_float")) return "float"
+        else if (std.mem.eql(u8, data_type, "c_string")) return "const char*";
+
+        return data_type;
+    }
+
     fn generateFunctionDefinition(self: *Generator, node: parser.FunctionDefinitionNode) parser.Node {
         var return_type = node.return_type;
         if (std.mem.eql(u8, node.name, "main")) {
             if (return_type == null) return_type = "c_int";
+        }
+
+        if (return_type) |ret| {
+            return_type = self.generateType(ret);
         }
 
         var body = parser.NodeList.init(self.allocator);
@@ -48,7 +62,7 @@ pub const Generator = struct {
                             }
                         };
                     }
-                } else {
+                } else if (return_type != null) {
                     var return_value: ?*parser.Node = self.allocator.create(parser.Node) catch unreachable;
                     return_value.?.* = gen;
                     gen = . {
@@ -56,7 +70,6 @@ pub const Generator = struct {
                             .value = return_value
                         }
                     };
-                    // TODO: Automatic return
                 }
             }
             body.append(gen) catch unreachable;
