@@ -11,13 +11,10 @@ pub fn main() !void {
 
     stdout.writeAll("### Lexer ###\n") catch unreachable;
 
-    const src =
-    \\ use "std-stdio"
-    \\
-    \\extern fn printf(msg: c_string)
-    \\
-    \\fn main() => printf("Hello, world!")
-    ;
+    var file = try std.fs.cwd().openFile("main.taly", .{});
+    const file_size = (try file.stat()).size;
+    var src = try arena.allocator().alloc(u8, file_size);
+    try file.reader().readNoEof(src);
 
     var lex = lexer.Lexer.init(src);
     const tokens = lex.tokenize(arena.allocator());
