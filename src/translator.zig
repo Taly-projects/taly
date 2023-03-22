@@ -176,8 +176,8 @@ pub const FunctionSource = struct {
             try writer.writeAll("\n");
             i = 0;
             while (i < tabs) : (i += 1) try writer.writeAll("\t");
-            try writer.writeAll("}");
         }
+        try writer.writeAll("}");
         return false;
     }
 
@@ -382,6 +382,8 @@ pub const Translator = struct {
 
     fn translateFunctionDefinition(self: *Translator, function_def: parser.FunctionDefinitionNode) NodeList {
         var res = NodeList.init(self.allocator);
+
+        if (function_def.external) return res;
 
         var parameters = FunctionDefinitionParameters.init(self.allocator);
         for (function_def.parameters.items) |param| {

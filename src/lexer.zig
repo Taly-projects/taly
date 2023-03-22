@@ -2,10 +2,16 @@ const std = @import("std");
 
 pub const TokenKeyword = enum {
     Fn,
+    Extern,
+    Use,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         if (std.mem.eql(u8, data, "fn")) {
             return TokenKeyword.Fn;
+        } else if (std.mem.eql(u8, data, "extern")) {
+            return TokenKeyword.Extern;
+        } else if (std.mem.eql(u8, data, "use")) {
+            return TokenKeyword.Use;
         }
 
         return null;
@@ -17,6 +23,8 @@ pub const TokenKeyword = enum {
 
         switch (self.*) {
             .Fn => return std.fmt.format(writer, "fn", .{}),
+            .Use => return std.fmt.format(writer, "use", .{}),
+            .Extern => return std.fmt.format(writer, "extern", .{}),
         }
     }
 };
@@ -107,6 +115,13 @@ pub const Token = union(TokenTag) {
     pub fn isSymbol(self: *const Token, symbol: TokenSymbol) bool {
         switch (self.*) {
             .Symbol => |sym| return sym == symbol,
+            else => return false
+        }
+    }
+
+    pub fn isKeyword(self: *const Token, keyword: TokenKeyword) bool {
+        switch (self.*) {
+            .Keyword => |kwd| return keyword == kwd,
             else => return false
         }
     }

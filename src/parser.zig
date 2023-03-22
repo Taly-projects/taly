@@ -60,6 +60,7 @@ pub const FunctionDefinitionNode = struct {
     name: []const u8,
     parameters: FunctionDefinitionParameters,
     return_type: ?[]const u8,
+    external: bool,
     body: NodeList,
 
     pub fn writeXML(self: *const FunctionDefinitionNode, writer: anytype, tabs: usize) anyerror!void {
@@ -99,6 +100,12 @@ pub const FunctionDefinitionNode = struct {
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
 
         try std.fmt.format(writer, "<type>{?s}</type>\n", .{self.return_type});
+            
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<external>{}</external>\n", .{self.external});
 
         // Add tabs (+ 1)
         i = 0;
@@ -240,6 +247,13 @@ pub const Parser = struct {
         }
     }
 
+    fn expectExactKeyword(self: *const Parser, keyword: lexer.TokenKeyword) void {
+        if (!self.expectCurrent().isKeyword(keyword)) {
+            std.log.err("Unexpected Token, should be '{}'!", .{keyword});
+            @panic("");
+        }
+    }
+
     fn expectSymbol(self: *const Parser, symbol: lexer.TokenSymbol) void {
         switch (self.expectCurrent()) {
             .Symbol => |sym| {
@@ -259,7 +273,7 @@ pub const Parser = struct {
         self.index += 1;
     }
 
-    fn parseFunctionDefinition(self: *Parser) Node {
+    fn parseFunctionDefinition(self: *Parser, external: bool) Node {
         self.advance();
         const id = self.expectIdentifier();
         self.advance();
@@ -335,6 +349,7 @@ pub const Parser = struct {
                 .name = id,
                 .parameters = parameters,
                 .return_type = return_type,
+                .external = external,
                 .body = body
             }
         };
@@ -392,7 +407,13 @@ pub const Parser = struct {
 
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         switch (keyword) {
-            .Fn => return self.parseFunctionDefinition()
+            .Fn => return self.parseFunctionDefinition(false),
+            .Extern => {
+                self.advance();
+                self.expectExactKeyword(lexer.TokenKeyword.Fn);
+                return self.parseFunctionDefinition(true);
+            },
+            .Use => @panic("TODO!")
         }
     }
 
@@ -402,6 +423,10 @@ pub const Parser = struct {
             .Constant => return self.parseExpr(),
             .Identifier => |id| return self.handleIdentifier(id),
             .Keyword => |keyword| return self.handleKeyword(keyword),
+            .Format => {
+                self.advance();
+                return self.parseCurrent();
+            },
             else => {
                 std.log.err("Unexpected token '{full}'", .{current});
                 @panic("");
