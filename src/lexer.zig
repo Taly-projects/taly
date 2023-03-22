@@ -253,6 +253,19 @@ pub const Lexer = struct {
         while (true) {
             current = self.getCurrent();
 
+            var spaces: u8 = 0;
+            while (current == ' ') {
+                spaces += 1;
+                
+                if (spaces == 4) {
+                    tokens.append(Token { .Format = .Tab }) catch unreachable; 
+                    spaces = 0;   
+                }
+
+                self.advance();
+                current = self.getCurrent();
+            }
+
             if (std.ascii.isAlphabetic(current)) {
                 // Identifier
                 tokens.append(self.makeIdentifier(allocator)) catch unreachable;
