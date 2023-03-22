@@ -386,10 +386,6 @@ pub const ReturnNode = struct {
             while (i < tabs) : (i += 1) try writer.writeAll("\t");
         }
 
-        // Add tabs
-        i = 0;        
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
         try writer.writeAll("</return>\n");
     }
     

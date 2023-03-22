@@ -190,7 +190,7 @@ pub const UseNode = struct {
         // Add tabs
         i = 0;
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        try std.fmt.format(writer, "<path>{s}</path>", .{self.path});
+        try std.fmt.format(writer, "<path>{s}</path>\n", .{self.path});
 
         // Add tabs
         i = 0;
