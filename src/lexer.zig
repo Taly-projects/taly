@@ -65,11 +65,15 @@ pub const TokenSymbol = enum {
 };
 
 pub const TokenConstantTag = enum {
-    String
+    String,
+    Int,
+    Float
 };
 
 pub const TokenConstant = union(TokenConstantTag) {
     String: []const u8,
+    Int: []const u8,
+    Float: []const u8,
 
     pub fn format(self: *const TokenConstant, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         _ = options;
@@ -77,10 +81,14 @@ pub const TokenConstant = union(TokenConstantTag) {
         if (std.mem.eql(u8, fmt, "full")) {
             switch (self.*) {
                 .String => |str| return std.fmt.format(writer, "String(\"{s}\")", .{str}),
+                .Int => |num| return std.fmt.format(writer, "Int({s})", .{num}),
+                .Float => |num| return std.fmt.format(writer, "Float({s})", .{num}),
             }
         } else {
             switch (self.*) {
                 .String => |str| return std.fmt.format(writer, "\"{s}\"", .{str}),
+                .Int => |num| return std.fmt.format(writer, "{s}", .{num}),
+                .Float => |num| return std.fmt.format(writer, "{s}", .{num}),
             }
         }
     }
@@ -246,6 +254,49 @@ pub const Lexer = struct {
         };
     } 
 
+    fn makeNumber(self: *Lexer, allocator: std.mem.Allocator) Token {
+        const start_index = self.index;
+        var current = self.getCurrent();
+        var length: usize = 0;
+        var float = false;
+        while (std.ascii.isDigit(current) or current == '_' or current == '.') {
+            self.advance();
+            current = self.getCurrent();
+            if (current != '_') length += 1;
+            if (current == '.') {
+                if (float) break;
+                float = true;
+            }
+        }
+
+        var array = allocator.alloc(u8, length) catch unreachable;
+
+        self.index = start_index;
+        var i: usize = 0;
+        while (i < length) {
+            current = self.getCurrent();
+            if (current != '_') {
+                array[i] = current;
+                i += 1;
+            } 
+            self.advance();
+        }
+
+        if (float) {
+            return Token {
+                .Constant = . {
+                    .Float = array
+                }
+            };
+        } else {
+            return Token {
+                .Constant = . {
+                    .Int = array
+                }
+            };
+        }
+    }
+
     pub fn tokenize(self: *Lexer, allocator: std.mem.Allocator) TokenList {
         var tokens = TokenList.init(allocator);
 
@@ -267,8 +318,10 @@ pub const Lexer = struct {
             }
 
             if (std.ascii.isAlphabetic(current)) {
-                // Identifier
                 tokens.append(self.makeIdentifier(allocator)) catch unreachable;
+                continue;
+            } else if (std.ascii.isDigit(current)) {
+                tokens.append(self.makeNumber(allocator)) catch unreachable;
                 continue;
             } else {
                 switch (current) {

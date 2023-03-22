@@ -2,11 +2,15 @@ const std = @import("std");
 const parser = @import("parser.zig");
 
 pub const ValueNodeTag = enum {
-    String
+    String,
+    Int,
+    Float,
 };
 
 pub const ValueNode = union(ValueNodeTag) {
     String: []const u8,
+    Int: []const u8,
+    Float: []const u8,
 
     pub fn writeC(self: *const ValueNode, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -16,6 +20,22 @@ pub const ValueNode = union(ValueNodeTag) {
                 while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
                 try std.fmt.format(writer, "\"{s}\"", .{str});
+                return true;
+            },
+            .Int => |num| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                try std.fmt.format(writer, "{s}", .{num});
+                return true;
+            },
+            .Float => |num| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                try std.fmt.format(writer, "{s}", .{num});
                 return true;
             }
         }
@@ -29,6 +49,20 @@ pub const ValueNode = union(ValueNodeTag) {
                 while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
                 return std.fmt.format(writer, "<string>{s}</string>\n", .{str});
+            },
+            .Int => |num| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                return std.fmt.format(writer, "<int>{s}</int>\n", .{num});
+            },
+            .Float => |num| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                return std.fmt.format(writer, "<float>{s}</float>\n", .{num});
             }
         }
     }
@@ -471,7 +505,9 @@ pub const Translator = struct {
     fn translateValueNode(self: *Translator, value: parser.ValueNode) Node {
         _ = self;
         switch (value) {
-            .String => |str| return Node { .Value = . { .String = str } }
+            .String => |str| return Node { .Value = . { .String = str } },
+            .Int => |num| return Node { .Value = . { .Int = num } },
+            .Float => |num| return Node { .Value = . { .Float = num } },
         }
     }
 

@@ -2,11 +2,15 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 
 pub const ValueNodeTag = enum {
-    String
+    String,
+    Int,
+    Float
 };
 
 pub const ValueNode = union(ValueNodeTag) {
     String: []const u8,
+    Int: []const u8,
+    Float: []const u8,
 
     pub fn writeXML(self: *const ValueNode, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -16,6 +20,20 @@ pub const ValueNode = union(ValueNodeTag) {
                 while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
                 return std.fmt.format(writer, "<string>{s}</string>\n", .{str});
+            },
+            .Int => |num| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                return std.fmt.format(writer, "<int>{s}</int>\n", .{num});
+            },
+            .Float => |num| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                return std.fmt.format(writer, "<float>{s}</float>\n", .{num});
             }
         }
     }
@@ -327,6 +345,10 @@ pub const Parser = struct {
             .Constant => |constant| {
                 switch (constant) {
                     .String => |str| return str,
+                    else => {
+                        std.log.err("Unexpected Token!", .{});
+                        @panic("");
+                    }
                 }
             },
             else => {
@@ -427,11 +449,10 @@ pub const Parser = struct {
         switch (current) {
             .Constant => |constant| return self.handleConstant(constant),
             else => {
-                std.log.err("Unexpected Token, should be expr!", .{});
+                std.log.err("Unexpected Token '{full}', should be expr!", .{current});
                 @panic("");
             }
         }
-        self.parseExpr();
     }
 
     fn handleConstant(self: *Parser, value: lexer.TokenConstant) Node {
@@ -441,6 +462,22 @@ pub const Parser = struct {
                 return Node {
                     .Value = . {
                         .String = str
+                    }
+                };
+            },
+            .Int => |num| {
+                self.advance();
+                return Node {
+                    .Value = . {
+                        .Int = num
+                    }
+                };
+            },
+            .Float => |num| {
+                self.advance();
+                return Node {
+                    .Value = . {
+                        .Float = num
                     }
                 };
             }
