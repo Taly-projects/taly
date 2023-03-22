@@ -11,8 +11,15 @@ pub fn main() !void {
 
     stdout.writeAll("### Lexer ###\n") catch unreachable;
 
-    var lex = lexer.Lexer.init("extern fn printf(msg: c_string)\n\nfn main() => \n\tprintln(\"Hello, world!\")");
-    // var lex = lexer.Lexer.init("println(\"Hello, world\")");
+    const src =
+    \\ use "std-stdio"
+    \\
+    \\extern fn printf(msg: c_string)
+    \\
+    \\fn main() => printf("Hello, world!")
+    ;
+
+    var lex = lexer.Lexer.init(src);
     const tokens = lex.tokenize(arena.allocator());
 
     for (tokens.items) |token| {

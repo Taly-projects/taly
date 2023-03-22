@@ -177,22 +177,48 @@ pub const FunctionCallNode = struct {
     }
 };
 
+pub const UseNode = struct {
+    path: []const u8,
+
+    pub fn writeXML(self: *const UseNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<use>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        try std.fmt.format(writer, "<path>{s}</path>", .{self.path});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</use>\n");
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
-    FunctionCall
+    FunctionCall,
+    Use,
 };
 
 pub const Node = union(NodeTag) {
     Value: ValueNode,
     FunctionDefinition: FunctionDefinitionNode,
     FunctionCall: FunctionCallNode,
+    Use: UseNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
             .Value => |node| return node.writeXML(writer, tabs),
             .FunctionDefinition => |node| return node.writeXML(writer, tabs),
             .FunctionCall => |node| return node.writeXML(writer, tabs),
+            .Use => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -204,6 +230,7 @@ pub const Node = union(NodeTag) {
             .Value => |node| node.writeXML(writer, 0) catch unreachable,
             .FunctionDefinition => |node| node.writeXML(writer, 0) catch unreachable,
             .FunctionCall => |node| node.writeXML(writer, 0) catch unreachable,
+            .Use => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -264,6 +291,20 @@ pub const Parser = struct {
             },
             else => {
                 std.log.err("Unexpected EOF!", .{});
+                @panic("");
+            }
+        }
+    }
+
+    fn expectString(self: *const Parser) []const u8 {
+        switch (self.expectCurrent()) {
+            .Constant => |constant| {
+                switch (constant) {
+                    .String => |str| return str,
+                }
+            },
+            else => {
+                std.log.err("Unexpected Token!", .{});
                 @panic("");
             }
         }
@@ -405,6 +446,18 @@ pub const Parser = struct {
         };
     }
 
+    fn parseUse(self: *Parser) Node {
+        self.advance();
+        const path = self.expectString();
+        self.advance();
+
+        return Node {
+            .Use = .{
+                .path = path
+            }
+        };
+    }
+
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         switch (keyword) {
             .Fn => return self.parseFunctionDefinition(false),
@@ -413,7 +466,7 @@ pub const Parser = struct {
                 self.expectExactKeyword(lexer.TokenKeyword.Fn);
                 return self.parseFunctionDefinition(true);
             },
-            .Use => @panic("TODO!")
+            .Use => return self.parseUse(),
         }
     }
 
