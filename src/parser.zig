@@ -4,13 +4,15 @@ const lexer = @import("lexer.zig");
 pub const ValueNodeTag = enum {
     String,
     Int,
-    Float
+    Float,
+    Bool,
 };
 
 pub const ValueNode = union(ValueNodeTag) {
     String: []const u8,
     Int: []const u8,
     Float: []const u8,
+    Bool: bool,
 
     pub fn writeXML(self: *const ValueNode, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -34,7 +36,14 @@ pub const ValueNode = union(ValueNodeTag) {
                 while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
                 return std.fmt.format(writer, "<float>{s}</float>\n", .{num});
-            }
+            },
+            .Bool => |b| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                return std.fmt.format(writer, "<bool>{}</bool>\n", .{b});
+            },
         }
     }
 
@@ -750,7 +759,14 @@ pub const Parser = struct {
                         .Float = num
                     }
                 };
-            }
+            },
+            .Bool => |b| {
+                return Node {
+                    .Value = . {
+                        .Bool = b
+                    }
+                };
+            },
         }
     }
 

@@ -409,6 +409,7 @@ pub const Translator = struct {
             .String => |str| return Node { .Value = . { .String = str } },
             .Int => |num| return Node { .Value = . { .Int = num } },
             .Float => |num| return Node { .Value = . { .Float = num } },
+            .Bool => |b| return Node { .Value = . { .Int = if (b) "1" else "0" } },
         }
     }
 

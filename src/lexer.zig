@@ -90,13 +90,15 @@ pub const TokenSymbol = enum {
 pub const TokenConstantTag = enum {
     String,
     Int,
-    Float
+    Float,
+    Bool,
 };
 
 pub const TokenConstant = union(TokenConstantTag) {
     String: []const u8,
     Int: []const u8,
     Float: []const u8,
+    Bool: bool,
 
     pub fn format(self: *const TokenConstant, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         _ = options;
@@ -106,12 +108,14 @@ pub const TokenConstant = union(TokenConstantTag) {
                 .String => |str| return std.fmt.format(writer, "String(\"{s}\")", .{str}),
                 .Int => |num| return std.fmt.format(writer, "Int({s})", .{num}),
                 .Float => |num| return std.fmt.format(writer, "Float({s})", .{num}),
+                .Bool => |b| return std.fmt.format(writer, "Bool({})", .{b}),
             }
         } else {
             switch (self.*) {
                 .String => |str| return std.fmt.format(writer, "\"{s}\"", .{str}),
                 .Int => |num| return std.fmt.format(writer, "{s}", .{num}),
                 .Float => |num| return std.fmt.format(writer, "{s}", .{num}),
+                .Bool => |b| return std.fmt.format(writer, "{}", .{b}),
             }
         }
     }
@@ -243,6 +247,18 @@ pub const Lexer = struct {
         if (TokenKeyword.isKeyword(array)) |keyword| {
             return Token { 
                 .Keyword = keyword
+            };
+        } else if (std.mem.eql(u8, array, "true")) {
+            return Token {
+                .Constant = .{
+                    .Bool = true
+                }
+            };
+        } else if (std.mem.eql(u8, array, "false")) {
+            return Token {
+                .Constant = .{
+                    .Bool = false
+                }
             };
         } else {
             return Token {
