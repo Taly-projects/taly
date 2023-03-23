@@ -6,6 +6,6 @@ fn HELLO(): c_string => "Hello, world!\n"
 
 # main function
 fn main() =>
-    const x: c_int = 2 + 3 * 4
+    const x: c_int = (2 + 3) * 4
     const msg: c_string = HELLO()
     printf(msg)

@@ -609,6 +609,17 @@ pub const Parser = struct {
         switch (current) {
             .Constant => |constant| return self.handleConstant(constant),
             .Identifier => |id| return self.handleIdentifier(id),
+            .Symbol => |symbol| {
+                if (symbol == lexer.TokenSymbol.LeftParenthesis) {
+                    self.advance();
+                    const expr = self.parseExpr();
+                    self.expectSymbol(lexer.TokenSymbol.RightParenthesis);
+                    return expr;
+                } else {
+                    std.log.err("Unexpected Token '{full}', should be expr!", .{current});
+                    @panic("");
+                }
+            },
             else => {
                 std.log.err("Unexpected Token '{full}', should be expr!", .{current});
                 @panic("");
@@ -833,9 +844,14 @@ pub const Parser = struct {
                 self.advance();
                 return self.parseCurrent();
             },
-            else => {
-                std.log.err("Unexpected token '{full}'", .{current});
-                @panic("");
+            .Symbol => |symbol| {
+                switch (symbol) {
+                    .LeftParenthesis => return self.parseExpr(),
+                    else => {
+                        std.log.err("Unexpected token '{full}'", .{current});
+                        @panic("");
+                    }
+                }
             }
         }
     }
