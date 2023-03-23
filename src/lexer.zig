@@ -48,6 +48,10 @@ pub const TokenSymbol = enum {
     RightDoubleArrow,
     Colon,
     Equal,
+    Plus,
+    Dash,
+    Star,
+    Slash,
 
     pub fn format(self: *const TokenSymbol, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         // _ = fmt;
@@ -61,6 +65,10 @@ pub const TokenSymbol = enum {
                 .RightDoubleArrow => return std.fmt.format(writer, "Right Double Arrow `=>`", .{}),
                 .Colon => return std.fmt.format(writer, "Colon `:`", .{}),
                 .Equal => return std.fmt.format(writer, "Equal `=`", .{}),
+                .Plus => return std.fmt.format(writer, "Plus `+`", .{}),
+                .Dash => return std.fmt.format(writer, "Dash `-`", .{}),
+                .Star => return std.fmt.format(writer, "Star `*`", .{}),
+                .Slash => return std.fmt.format(writer, "Slash `/`", .{}),
             }
         } else {
             switch (self.*) {
@@ -70,6 +78,10 @@ pub const TokenSymbol = enum {
                 .RightDoubleArrow => return std.fmt.format(writer, "=>", .{}),
                 .Colon => return std.fmt.format(writer, ":", .{}),
                 .Equal => return std.fmt.format(writer, "=", .{}),
+                .Plus => return std.fmt.format(writer, "+", .{}),
+                .Dash => return std.fmt.format(writer, "-", .{}),
+                .Star => return std.fmt.format(writer, "*", .{}),
+                .Slash => return std.fmt.format(writer, "/", .{}),
             }
         }
     }
@@ -350,6 +362,10 @@ pub const Lexer = struct {
                         }
                     },
                     ':' => tokens.append(Token { .Symbol = .Colon }) catch unreachable,
+                    '+' => tokens.append(Token { .Symbol = .Plus }) catch unreachable,
+                    '-' => tokens.append(Token { .Symbol = .Dash }) catch unreachable,
+                    '*' => tokens.append(Token { .Symbol = .Star }) catch unreachable,
+                    '/' => tokens.append(Token { .Symbol = .Slash }) catch unreachable,
                     ' ', '\r' => {
                         // Ignored
                     },

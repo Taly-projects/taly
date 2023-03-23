@@ -283,7 +283,7 @@ pub const VariableDefinitionNode = struct {
             // Add tabs (+ 1)
             i = 0;
             while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-            
+
             try writer.writeAll("</value>\n");
         }
 
@@ -307,6 +307,79 @@ pub const VariableCallNode = struct {
     }
 };
 
+pub const Operator = enum {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+
+    pub fn writeXML(self: *const Operator, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        
+        try writer.writeAll("<operator>");
+        switch (self.*) {
+            .Add => try writer.writeAll("add"),
+            .Subtract => try writer.writeAll("subtract"),
+            .Multiply => try writer.writeAll("mutliply"),
+            .Divide => try writer.writeAll("divide"),
+        }
+        try writer.writeAll("</operator\n>");
+    }
+};
+
+pub const BinaryOperationNode = struct {
+    lhs: *Node,
+    operator: Operator,
+    rhs: *Node,
+
+    pub fn writeXML(self: *const BinaryOperationNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        
+        try writer.writeAll("<bin-op>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<lhs>\n");
+
+        try self.lhs.writeXML(writer, tabs + 2);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</lhs>\n");
+
+        try self.operator.writeXML(writer, tabs + 1);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<rhs>\n");
+
+        try self.lhs.writeXML(writer, tabs + 2);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</rhs>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</bin-op>\n");
+
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
@@ -315,6 +388,7 @@ pub const NodeTag = enum {
     Return,
     VariableDefinition,
     VariableCall,
+    BinaryOperation,
 };
 
 pub const Node = union(NodeTag) {
@@ -325,6 +399,7 @@ pub const Node = union(NodeTag) {
     Return: ReturnNode,
     VariableDefinition: VariableDefinitionNode,
     VariableCall: VariableCallNode,
+    BinaryOperation: BinaryOperationNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -335,6 +410,7 @@ pub const Node = union(NodeTag) {
             .Return => |node| return node.writeXML(writer, tabs),
             .VariableDefinition => |node| return node.writeXML(writer, tabs),
             .VariableCall => |node| return node.writeXML(writer, tabs),
+            .BinaryOperation => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -350,6 +426,7 @@ pub const Node = union(NodeTag) {
             .Return => |node| node.writeXML(writer, 0) catch unreachable,
             .VariableDefinition => |node| node.writeXML(writer, 0) catch unreachable,
             .VariableCall => |node| node.writeXML(writer, 0) catch unreachable,
+            .BinaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -527,7 +604,7 @@ pub const Parser = struct {
         };
     }
 
-    fn parseExpr(self: *Parser) Node {
+    fn parseValue(self: *Parser) Node {
         const current = self.expectCurrent();
         switch (current) {
             .Constant => |constant| return self.handleConstant(constant),
@@ -539,10 +616,78 @@ pub const Parser = struct {
         }
     }
 
+    fn parseExpr0(self: *Parser) Node {
+        var lhs = self.parseValue();
+        self.advance();
+
+        while (self.getCurrent()) |current| {
+            var operator: Operator = undefined;
+            if (current.isSymbol(lexer.TokenSymbol.Star)) {
+                operator = Operator.Multiply;
+            } else if (current.isSymbol(lexer.TokenSymbol.Slash)) {
+                operator = Operator.Divide;
+            } else {
+                break;
+            }
+            self.advance();
+            const rhs = self.parseValue();
+            self.advance();
+
+            var lhs_alloc = self.allocator.create(Node) catch unreachable;
+            lhs_alloc.* = lhs;
+            var rhs_alloc = self.allocator.create(Node) catch unreachable;
+            rhs_alloc.* = rhs;
+
+            lhs = Node {
+                .BinaryOperation = . {
+                    .lhs = lhs_alloc,
+                    .operator = operator,
+                    .rhs = rhs_alloc
+                }
+            };
+        }
+
+        return lhs;
+    }
+
+    fn parseExpr1(self: *Parser) Node {
+        var lhs = self.parseExpr0();
+
+        while (self.getCurrent()) |current| {
+            var operator: Operator = undefined;
+            if (current.isSymbol(lexer.TokenSymbol.Plus)) {
+                operator = Operator.Add;
+            } else if (current.isSymbol(lexer.TokenSymbol.Dash)) {
+                operator = Operator.Subtract;
+            } else {
+                break;
+            }
+            self.advance();
+            const rhs = self.parseExpr1();
+
+            var lhs_alloc = self.allocator.create(Node) catch unreachable;
+            lhs_alloc.* = lhs;
+            var rhs_alloc = self.allocator.create(Node) catch unreachable;
+            rhs_alloc.* = rhs;
+
+            lhs = Node {
+                .BinaryOperation = . {
+                    .lhs = lhs_alloc,
+                    .operator = operator,
+                    .rhs = rhs_alloc
+                }
+            };
+        }
+
+        return lhs;
+    }
+
+    const parseExpr = parseExpr1;
+
     fn handleConstant(self: *Parser, value: lexer.TokenConstant) Node {
+        _ = self;
         switch (value) {
             .String => |str| {
-                self.advance();
                 return Node {
                     .Value = . {
                         .String = str
@@ -550,7 +695,6 @@ pub const Parser = struct {
                 };
             },
             .Int => |num| {
-                self.advance();
                 return Node {
                     .Value = . {
                         .Int = num
@@ -558,7 +702,6 @@ pub const Parser = struct {
                 };
             },
             .Float => |num| {
-                self.advance();
                 return Node {
                     .Value = . {
                         .Float = num
@@ -581,7 +724,6 @@ pub const Parser = struct {
             parameters.append(expr) catch unreachable;
             current = self.expectCurrent();
         }
-        self.advance();
         
         return Node {
             .FunctionCall = .{
@@ -599,7 +741,6 @@ pub const Parser = struct {
             }
         }
 
-        self.advance();
         return Node {
             .VariableCall = . {
                 .name = id

@@ -41,32 +41,6 @@ pub const ValueNode = union(ValueNodeTag) {
         }
     }
 
-    pub fn writeXML(self: *const ValueNode, writer: anytype, tabs: usize) anyerror!void {
-        switch (self.*) {
-            .String => |str| {
-                // Add tabs
-                var i: usize = 0;
-                while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-                return std.fmt.format(writer, "<string>{s}</string>\n", .{str});
-            },
-            .Int => |num| {
-                // Add tabs
-                var i: usize = 0;
-                while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-                return std.fmt.format(writer, "<int>{s}</int>\n", .{num});
-            },
-            .Float => |num| {
-                // Add tabs
-                var i: usize = 0;
-                while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-                return std.fmt.format(writer, "<float>{s}</float>\n", .{num});
-            }
-        }
-    }
-
 };
 
 pub const FunctionDefinitionParameter = struct {
@@ -75,32 +49,6 @@ pub const FunctionDefinitionParameter = struct {
 
     pub fn writeC(self: *const FunctionDefinitionParameter, writer: anytype) anyerror!void {
         try std.fmt.format(writer, "{s} {s}", .{ self.data_type, self.name });
-    }
-
-    pub fn writeXML(self: *const FunctionDefinitionParameter, writer: anytype, tabs: usize) anyerror!void {
-        // Add tabs
-        var i: usize = 0;
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("<parameter>\n");
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try std.fmt.format(writer, "<type>{s}</type>\n", .{self.data_type});
-
-        // Add tabs
-        i = 0;        
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("</parameter>");
     }
     
 };
@@ -127,51 +75,6 @@ pub const FunctionHeader = struct {
         }
         try writer.writeAll(")");
         return true;
-    }
-
-    pub fn writeXML(self: *const FunctionHeader, writer: anytype, tabs: usize) anyerror!void {
-        // Add tabs
-        var i: usize = 0;
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("<function-header>\n");
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try writer.writeAll("<parameters>");
-        i = 0;
-        for (self.parameters.items) |param| {
-            try writer.writeAll("\n");
-            try param.writeXML(writer, tabs + 2);
-        }
-        if (self.parameters.items.len > 0) {
-            try writer.writeAll("\n");
-            
-            // Add tabs
-            i = 0;
-            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        }
-        try writer.writeAll("</parameters>\n");
-            
-        // Add tabs
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-
-        try std.fmt.format(writer, "<type>{?s}</type>\n", .{self.return_type});
-
-        // Add tabs
-        i = 0;        
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("</function-header>\n");
     }
     
 };
@@ -214,69 +117,6 @@ pub const FunctionSource = struct {
         try writer.writeAll("}");
         return false;
     }
-
-    pub fn writeXML(self: *const FunctionSource, writer: anytype, tabs: usize) anyerror!void {
-        // Add tabs
-        var i: usize = 0;
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("<function-source>\n");
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try writer.writeAll("<parameters>");
-        i = 0;
-        for (self.parameters.items) |param| {
-            try writer.writeAll("\n");
-            try param.writeXML(writer, tabs + 2);
-        }
-        if (self.parameters.items.len > 0) {
-            try writer.writeAll("\n");
-            
-            // Add tabs
-            i = 0;
-            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        }
-        try writer.writeAll("</parameters>\n");
-            
-        // Add tabs
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-
-        try std.fmt.format(writer, "<type>{?s}</type>\n", .{self.return_type});
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try writer.writeAll("<body>");
-        i = 0;
-        for (self.body.items) |node| {
-            if (i == 0) try writer.writeAll("\n");
-            try node.writeXML(writer, tabs + 2);
-            i += 1;
-        }
-        if (self.body.items.len > 0) {
-            // Add tabs
-            i = 0;
-            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        }
-        try writer.writeAll("</body>\n");
-
-        // Add tabs
-        i = 0;        
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("</function-source>\n");
-    }
     
 };
 
@@ -301,43 +141,6 @@ pub const FunctionCallNode = struct {
         return true;
     }
 
-    pub fn writeXML(self: *const FunctionCallNode, writer: anytype, tabs: usize) anyerror!void {
-        // Add tabs
-        var i: usize = 0;
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("<function-call>\n");
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try writer.writeAll("<parameters>");
-        i = 0;
-        for (self.parameters.items) |param| {
-            if (i == 0) try writer.writeAll("\n");
-            try param.writeXML(writer, tabs + 2);
-            i += 1;
-        }
-        if (self.parameters.items.len > 0) {
-            // Add tabs
-            i = 0;
-            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        }
-        try writer.writeAll("</parameters>\n");
-
-        // Add tabs
-        i = 0;        
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("</function-call>\n");
-    }
 };
 
 pub const IncludeNode = struct {
@@ -360,31 +163,6 @@ pub const IncludeNode = struct {
         return false;
     }
 
-    pub fn writeXML(self: *const IncludeNode, writer: anytype, tabs: usize) anyerror!void {
-        // Add tabs
-        var i: usize = 0;
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("<include>\n");
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try std.fmt.format(writer, "<std>{}</std>\n", .{self.std});
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try std.fmt.format(writer, "<path>{s}</path>\n", .{self.path});
-
-        // Add tabs
-        i = 0;        
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("</include>\n");
-    }
 };
 
 pub const ReturnNode = struct {
@@ -402,25 +180,6 @@ pub const ReturnNode = struct {
         }
 
         return true;
-    }
-
-    pub fn writeXML(self: *const ReturnNode, writer: anytype, tabs: usize) anyerror!void {
-        // Add tabs
-        var i: usize = 0;
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("<return>");
-
-        if (self.value) |value| {
-            try writer.writeAll("\n");
-            try value.writeXML(writer, tabs + 1);
-
-            // Add tabs
-            i = 0;        
-            while (i < tabs) : (i += 1) try writer.writeAll("\t");
-        }
-
-        try writer.writeAll("</return>\n");
     }
     
 };
@@ -450,65 +209,6 @@ pub const VariableDefinitionNode = struct {
         return true;
     }
 
-    pub fn writeXML(self: *const VariableDefinitionNode, writer: anytype, tabs: usize) anyerror!void {
-        // Add tabs
-        var i: usize = 0;
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("<variable-def>\n");
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try std.fmt.format(writer, "<constant>{}</constant>\n", .{self.constant});
-
-        // Add tabs (+ 1)
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-        try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
-
-        if (self.data_type) |data_type| {
-            // Add tabs (+ 1)
-            i = 0;
-            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        
-            try std.fmt.format(writer, "<data-type>{s}</data-type>\n", .{data_type});
-        }
-
-        if (self.value) |value| {
-            // Add tabs (+ 1)
-            i = 0;
-            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-
-            try writer.writeAll("<value>\n");
-
-            value.writeXML(writer, tabs + 1);
-
-            try writer.writeAll("</value>\n");
-        }
-        
-        try writer.writeAll("<parameters>");
-        i = 0;
-        for (self.parameters.items) |param| {
-            if (i == 0) try writer.writeAll("\n");
-            try param.writeXML(writer, tabs + 2);
-            i += 1;
-        }
-        if (self.parameters.items.len > 0) {
-            // Add tabs
-            i = 0;
-            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-        }
-        try writer.writeAll("</parameters>\n");
-
-        // Add tabs
-        i = 0;        
-        while (i < tabs) : (i += 1) try writer.writeAll("\t");
-
-        try writer.writeAll("</variable-def>\n");
-    }
 };
 
 pub const VariableCallNode = struct {
@@ -524,12 +224,49 @@ pub const VariableCallNode = struct {
         return true;
     }
 
-    pub fn writeXML(self: *const VariableCallNode, writer: anytype, tabs: usize) anyerror!void {
+};
+
+pub const Operator = enum {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+};
+
+pub const BinaryOperationNode = struct {
+    lhs: *Node,
+    operator: Operator,
+    rhs: *Node,
+
+    pub fn writeC(self: *const BinaryOperationNode, writer: anytype, tabs: usize) anyerror!bool {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try std.fmt.format(writer, "<variable-call>{s}</variable-call>\n", .{self.name});
+        try writer.writeAll("(");
+        _ = try self.lhs.writeC(writer, 0);
+        
+        switch (self.operator) {
+            .Add => {
+                try writer.writeAll(" + ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .Subtract => {
+                try writer.writeAll(" - ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .Multiply => {
+                try writer.writeAll(" * ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .Divide => {
+                try writer.writeAll(" / ");
+                _ = try self.rhs.writeC(writer, 0);
+            }
+        }
+        try writer.writeAll(")");
+
+        return true;
     }
 };
 
@@ -542,6 +279,7 @@ pub const NodeTag = enum {
     Return,
     VariableDefinition,
     VariableCall,
+    BinaryOperation,
 };
 
 pub const Node = union(NodeTag) {
@@ -553,6 +291,7 @@ pub const Node = union(NodeTag) {
     Return: ReturnNode,
     VariableDefinition: VariableDefinitionNode,
     VariableCall: VariableCallNode,
+    BinaryOperation: BinaryOperationNode,
 
     pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -564,37 +303,10 @@ pub const Node = union(NodeTag) {
             .Return => |node| return node.writeC(writer, tabs),
             .VariableDefinition => |node| return node.writeC(writer, tabs),
             .VariableCall => |node| return node.writeC(writer, tabs),
+            .BinaryOperation => |node| return node.writeC(writer, tabs),
         }
     }
 
-    pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
-        switch (self.*) {
-            .Value => |node| return node.writeXML(writer, tabs),
-            .FunctionHeader => |node| return node.writeXML(writer, tabs),
-            .FunctionSource => |node| return node.writeXML(writer, tabs),
-            .FunctionCall => |node| return node.writeXML(writer, tabs),
-            .Include => |node| return node.writeXML(writer, tabs),
-            .Return => |node| return node.writeXML(writer, tabs),
-            .VariableDefinition => |node| return node.writeXML(writer, tabs),
-            .VariableCall => |node| return node.writeXML(writer, tabs),
-        }
-    }
-
-    pub fn format(self: *const Node, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
-        _ = options;
-        _ = fmt;
-
-        switch (self.*) {
-            .Value => |node| node.writeXML(writer, 0) catch unreachable,
-            .FunctionHeader => |node| node.writeXML(writer, 0) catch unreachable,
-            .FunctionSource => |node| node.writeXML(writer, 0) catch unreachable,
-            .FunctionCall => |node| node.writeXML(writer, 0) catch unreachable,
-            .Include => |node| node.writeXML(writer, 0) catch unreachable,
-            .Return => |node| node.writeXML(writer, 0) catch unreachable,
-            .VariableDefinition => |node| node.writeXML(writer, 0) catch unreachable,
-            .VariableCall => |node| node.writeXML(writer, 0) catch unreachable,
-        }
-    }
 };
 
 pub const NodeList = std.ArrayList(Node);
@@ -829,6 +541,38 @@ pub const Translator = struct {
         return res;
     }
 
+    fn translateBinaryOperation(self: *Translator, bin_op: parser.BinaryOperationNode) File {
+        var res = File.init("_", self.allocator);
+
+        var lhs_res = self.translateNode(bin_op.lhs.*);
+        var lhs_node = self.allocator.create(Node) catch unreachable;
+        lhs_node.* = lhs_res.source.pop();
+        res.append(&lhs_res);
+
+        var rhs_res = self.translateNode(bin_op.rhs.*);
+        var rhs_node = self.allocator.create(Node) catch unreachable;
+        rhs_node.* = rhs_res.source.pop();
+        res.append(&rhs_res);
+
+        var operator: Operator = undefined;
+        switch (bin_op.operator) {
+            .Add => operator = .Add,
+            .Subtract => operator = .Subtract,
+            .Multiply => operator = .Multiply,
+            .Divide => operator = .Divide,
+        }
+
+        res.source.append(Node {
+            .BinaryOperation = BinaryOperationNode {
+                .lhs = lhs_node,
+                .operator = operator,
+                .rhs = rhs_node,
+            }
+        }) catch unreachable;
+
+        return res;
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) File {
         var res = File.init("_", self.allocator);
         switch (node) {
@@ -843,6 +587,7 @@ pub const Translator = struct {
             .Return => |ret| res.append(&self.translateReturn(ret)),
             .VariableDefinition => |var_def| res.append(&self.translateVariableDefinition(var_def)),
             .VariableCall => |var_call| res.append(&self.translateVariableCall(var_call)),
+            .BinaryOperation => |bin_op| res.append(&self.translateBinaryOperation(bin_op)),
         }
         return res;
     }
