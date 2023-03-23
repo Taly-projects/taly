@@ -6,6 +6,6 @@ fn HELLO(): c_string => "Hello, world!\n"
 
 # main function
 fn main() =>
-    var x: c_int = 5 > 3
+    var x: c_int = 5 > 3 and 3 < 9
     const msg: c_string = HELLO()
     printf(msg)

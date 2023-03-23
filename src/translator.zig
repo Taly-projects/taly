@@ -237,7 +237,9 @@ pub const Operator = enum {
     Less,
     LessOrEqual,
     Equal,
-    NotEqual
+    NotEqual,
+    And,
+    Or,
 };
 
 pub const BinaryOperationNode = struct {
@@ -296,6 +298,14 @@ pub const BinaryOperationNode = struct {
             },
             .NotEqual => {
                 try writer.writeAll(" != ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .And => {
+                try writer.writeAll(" && ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .Or => {
+                try writer.writeAll(" || ");
                 _ = try self.rhs.writeC(writer, 0);
             },
         }
@@ -603,6 +613,8 @@ pub const Translator = struct {
             .LessOrEqual => operator = .LessOrEqual,
             .Equal => operator = .Equal,
             .NotEqual => operator = .NotEqual,
+            .And => operator = .And,
+            .Or => operator = .Or,
         }
 
         res.source.append(Node {

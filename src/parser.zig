@@ -328,6 +328,8 @@ pub const Operator = enum {
     LessOrEqual,
     Equal,
     NotEqual,
+    And,
+    Or,
 
     pub fn writeXML(self: *const Operator, writer: anytype, tabs: usize) anyerror!void {
         // Add tabs
@@ -347,6 +349,8 @@ pub const Operator = enum {
             .LessOrEqual => try writer.writeAll("less or equal"),
             .Equal => try writer.writeAll("equal"),
             .NotEqual => try writer.writeAll("not equal"),
+            .And => try writer.writeAll("and"),
+            .Or => try writer.writeAll("or"),
         }
         try writer.writeAll("</operator\n>");
     }
@@ -786,7 +790,39 @@ pub const Parser = struct {
         return lhs;
     }
 
-    const parseExpr = parseExpr3;
+    fn parseExpr4(self: *Parser) Node {
+        var lhs = self.parseExpr3();
+
+        while (self.getCurrent()) |current| {
+            var operator: Operator = undefined;
+            if (current.isKeyword(lexer.TokenKeyword.And)) {
+                operator = Operator.And;
+            } else if (current.isKeyword(lexer.TokenKeyword.Or)) {
+                operator = Operator.Or;
+            } else {
+                break;
+            }
+            self.advance();
+            const rhs = self.parseExpr3();
+
+            var lhs_alloc = self.allocator.create(Node) catch unreachable;
+            lhs_alloc.* = lhs;
+            var rhs_alloc = self.allocator.create(Node) catch unreachable;
+            rhs_alloc.* = rhs;
+
+            lhs = Node {
+                .BinaryOperation = . {
+                    .lhs = lhs_alloc,
+                    .operator = operator,
+                    .rhs = rhs_alloc
+                }
+            };
+        }
+
+        return lhs;
+    }
+
+    const parseExpr = parseExpr4;
 
     fn handleConstant(self: *Parser, value: lexer.TokenConstant) Node {
         _ = self;
@@ -932,6 +968,10 @@ pub const Parser = struct {
             .Return => return self.parseReturn(),
             .Const => return self.parseVariableDefinition(true),
             .Var => return self.parseVariableDefinition(false),
+            else => {
+                std.log.err("Unexpected token '{full}'", .{self.getCurrent().?});
+                @panic("");
+            }
         }
     }
 
