@@ -7,6 +7,9 @@ pub const TokenKeyword = enum {
     Return,
     Var,
     Const,
+    And,
+    Or,
+    Not,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         if (std.mem.eql(u8, data, "fn")) {
@@ -21,6 +24,12 @@ pub const TokenKeyword = enum {
             return TokenKeyword.Var;
         } else if (std.mem.eql(u8, data, "const")) {
             return TokenKeyword.Const;
+        } else if (std.mem.eql(u8, data, "and")) {
+            return TokenKeyword.And;
+        } else if (std.mem.eql(u8, data, "or")) {
+            return TokenKeyword.Or;
+        } else if (std.mem.eql(u8, data, "not")) {
+            return TokenKeyword.Not;
         }
 
         return null;
@@ -37,6 +46,9 @@ pub const TokenKeyword = enum {
             .Return => return std.fmt.format(writer, "return", .{}),
             .Var => return std.fmt.format(writer, "var", .{}),
             .Const => return std.fmt.format(writer, "const", .{}),
+            .And => return std.fmt.format(writer, "and", .{}),
+            .Or => return std.fmt.format(writer, "or", .{}),
+            .Not => return std.fmt.format(writer, "not", .{}),
         }
     }
 };
@@ -48,6 +60,16 @@ pub const TokenSymbol = enum {
     RightDoubleArrow,
     Colon,
     Equal,
+    Plus,
+    Dash,
+    Star,
+    Slash,
+    RightAngle,
+    RightAngleEqual,
+    LeftAngle,
+    LeftAngleEqual,
+    DoubleEqual,
+    ExclamationMarkEqual,
 
     pub fn format(self: *const TokenSymbol, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         // _ = fmt;
@@ -61,6 +83,16 @@ pub const TokenSymbol = enum {
                 .RightDoubleArrow => return std.fmt.format(writer, "Right Double Arrow `=>`", .{}),
                 .Colon => return std.fmt.format(writer, "Colon `:`", .{}),
                 .Equal => return std.fmt.format(writer, "Equal `=`", .{}),
+                .Plus => return std.fmt.format(writer, "Plus `+`", .{}),
+                .Dash => return std.fmt.format(writer, "Dash `-`", .{}),
+                .Star => return std.fmt.format(writer, "Star `*`", .{}),
+                .Slash => return std.fmt.format(writer, "Slash `/`", .{}),
+                .RightAngle => return std.fmt.format(writer, "Right Angle `>`", .{}),
+                .RightAngleEqual => return std.fmt.format(writer, "Right Angle Equal `>=`", .{}),
+                .LeftAngle => return std.fmt.format(writer, "Left Angle `<`", .{}),
+                .LeftAngleEqual => return std.fmt.format(writer, "Left Angle Equal `<=`", .{}),
+                .DoubleEqual => return std.fmt.format(writer, "Double Equal `==`", .{}),
+                .ExclamationMarkEqual => return std.fmt.format(writer, "Exclamation Mark Equal `!=`", .{}),
             }
         } else {
             switch (self.*) {
@@ -70,6 +102,16 @@ pub const TokenSymbol = enum {
                 .RightDoubleArrow => return std.fmt.format(writer, "=>", .{}),
                 .Colon => return std.fmt.format(writer, ":", .{}),
                 .Equal => return std.fmt.format(writer, "=", .{}),
+                .Plus => return std.fmt.format(writer, "+", .{}),
+                .Dash => return std.fmt.format(writer, "-", .{}),
+                .Star => return std.fmt.format(writer, "*", .{}),
+                .Slash => return std.fmt.format(writer, "/", .{}),
+                .RightAngle => return std.fmt.format(writer, ">", .{}),
+                .RightAngleEqual => return std.fmt.format(writer, ">=", .{}),
+                .LeftAngle => return std.fmt.format(writer, "<", .{}),
+                .LeftAngleEqual => return std.fmt.format(writer, "<=", .{}),
+                .DoubleEqual => return std.fmt.format(writer, "==", .{}),
+                .ExclamationMarkEqual => return std.fmt.format(writer, "!=", .{}),
             }
         }
     }
@@ -78,13 +120,15 @@ pub const TokenSymbol = enum {
 pub const TokenConstantTag = enum {
     String,
     Int,
-    Float
+    Float,
+    Bool,
 };
 
 pub const TokenConstant = union(TokenConstantTag) {
     String: []const u8,
     Int: []const u8,
     Float: []const u8,
+    Bool: bool,
 
     pub fn format(self: *const TokenConstant, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         _ = options;
@@ -94,12 +138,14 @@ pub const TokenConstant = union(TokenConstantTag) {
                 .String => |str| return std.fmt.format(writer, "String(\"{s}\")", .{str}),
                 .Int => |num| return std.fmt.format(writer, "Int({s})", .{num}),
                 .Float => |num| return std.fmt.format(writer, "Float({s})", .{num}),
+                .Bool => |b| return std.fmt.format(writer, "Bool({})", .{b}),
             }
         } else {
             switch (self.*) {
                 .String => |str| return std.fmt.format(writer, "\"{s}\"", .{str}),
                 .Int => |num| return std.fmt.format(writer, "{s}", .{num}),
                 .Float => |num| return std.fmt.format(writer, "{s}", .{num}),
+                .Bool => |b| return std.fmt.format(writer, "{}", .{b}),
             }
         }
     }
@@ -232,6 +278,18 @@ pub const Lexer = struct {
             return Token { 
                 .Keyword = keyword
             };
+        } else if (std.mem.eql(u8, array, "true")) {
+            return Token {
+                .Constant = .{
+                    .Bool = true
+                }
+            };
+        } else if (std.mem.eql(u8, array, "false")) {
+            return Token {
+                .Constant = .{
+                    .Bool = false
+                }
+            };
         } else {
             return Token {
                 .Identifier = array
@@ -345,11 +403,46 @@ pub const Lexer = struct {
                         if (next == '>') {
                             self.advance();
                             tokens.append(Token { .Symbol = .RightDoubleArrow }) catch unreachable;
+                        } else if (next == '=') {
+                            self.advance();
+                            tokens.append(Token { .Symbol = .DoubleEqual }) catch unreachable;
                         } else {
                             tokens.append(Token { .Symbol = .Equal }) catch unreachable;
                         }
                     },
+                    '>' => {
+                        const next = self.peek(1);
+                        if (next == '=') {
+                            self.advance();
+                            tokens.append(Token { .Symbol = .RightAngleEqual }) catch unreachable;
+                        } else {
+                            tokens.append(Token { .Symbol = .RightAngle }) catch unreachable;
+                        }
+                    },
+                    '<' => {
+                        const next = self.peek(1);
+                        if (next == '=') {
+                            self.advance();
+                            tokens.append(Token { .Symbol = .LeftAngleEqual }) catch unreachable;
+                        } else {
+                            tokens.append(Token { .Symbol = .LeftAngle }) catch unreachable;
+                        }
+                    },
+                    '!' => {
+                        const next = self.peek(1);
+                        if (next == '=') {
+                            self.advance();
+                            tokens.append(Token { .Symbol = .ExclamationMarkEqual }) catch unreachable;
+                        } else {
+                            std.log.err("Unexpected char '!'", .{});
+                            @panic("");
+                        }
+                    },
                     ':' => tokens.append(Token { .Symbol = .Colon }) catch unreachable,
+                    '+' => tokens.append(Token { .Symbol = .Plus }) catch unreachable,
+                    '-' => tokens.append(Token { .Symbol = .Dash }) catch unreachable,
+                    '*' => tokens.append(Token { .Symbol = .Star }) catch unreachable,
+                    '/' => tokens.append(Token { .Symbol = .Slash }) catch unreachable,
                     ' ', '\r' => {
                         // Ignored
                     },

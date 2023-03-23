@@ -6,5 +6,6 @@ fn HELLO(): c_string => "Hello, world!\n"
 
 # main function
 fn main() =>
+    var x: c_int = not (true and false)
     const msg: c_string = HELLO()
     printf(msg)

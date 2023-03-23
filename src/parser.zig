@@ -4,13 +4,15 @@ const lexer = @import("lexer.zig");
 pub const ValueNodeTag = enum {
     String,
     Int,
-    Float
+    Float,
+    Bool,
 };
 
 pub const ValueNode = union(ValueNodeTag) {
     String: []const u8,
     Int: []const u8,
     Float: []const u8,
+    Bool: bool,
 
     pub fn writeXML(self: *const ValueNode, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -34,7 +36,14 @@ pub const ValueNode = union(ValueNodeTag) {
                 while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
                 return std.fmt.format(writer, "<float>{s}</float>\n", .{num});
-            }
+            },
+            .Bool => |b| {
+                // Add tabs
+                var i: usize = 0;
+                while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+                return std.fmt.format(writer, "<bool>{}</bool>\n", .{b});
+            },
         }
     }
 
@@ -283,7 +292,7 @@ pub const VariableDefinitionNode = struct {
             // Add tabs (+ 1)
             i = 0;
             while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-            
+
             try writer.writeAll("</value>\n");
         }
 
@@ -307,6 +316,135 @@ pub const VariableCallNode = struct {
     }
 };
 
+pub const Operator = enum {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Assignment,
+    Greater,
+    GreaterOrEqual,
+    Less,
+    LessOrEqual,
+    Equal,
+    NotEqual,
+    And,
+    Or,
+    Not,
+
+    pub fn writeXML(self: *const Operator, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        
+        try writer.writeAll("<operator>");
+        switch (self.*) {
+            .Add => try writer.writeAll("add"),
+            .Subtract => try writer.writeAll("subtract"),
+            .Multiply => try writer.writeAll("mutliply"),
+            .Divide => try writer.writeAll("divide"),
+            .Assignment => try writer.writeAll("assignment"),
+            .Greater => try writer.writeAll("greater"),
+            .GreaterOrEqual => try writer.writeAll("greater or equal"),
+            .Less => try writer.writeAll("less"),
+            .LessOrEqual => try writer.writeAll("less or equal"),
+            .Equal => try writer.writeAll("equal"),
+            .NotEqual => try writer.writeAll("not equal"),
+            .And => try writer.writeAll("and"),
+            .Or => try writer.writeAll("or"),
+            .Not => try writer.writeAll("not"),
+        }
+        try writer.writeAll("</operator\n>");
+    }
+};
+
+pub const BinaryOperationNode = struct {
+    lhs: *Node,
+    operator: Operator,
+    rhs: *Node,
+
+    pub fn writeXML(self: *const BinaryOperationNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        
+        try writer.writeAll("<bin-op>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<lhs>\n");
+
+        try self.lhs.writeXML(writer, tabs + 2);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</lhs>\n");
+
+        try self.operator.writeXML(writer, tabs + 1);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<rhs>\n");
+
+        try self.rhs.writeXML(writer, tabs + 2);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</rhs>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</bin-op>\n");
+
+    }
+};
+
+pub const UnaryOperationNode = struct {
+    operator: Operator,
+    value: *Node,
+
+    pub fn writeXML(self: *const UnaryOperationNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        
+        try writer.writeAll("<unary-op>\n");
+
+        try self.operator.writeXML(writer, tabs + 1);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<value>\n");
+
+        try self.value.writeXML(writer, tabs + 2);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</value>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</unary-op>\n");
+
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
@@ -315,6 +453,8 @@ pub const NodeTag = enum {
     Return,
     VariableDefinition,
     VariableCall,
+    BinaryOperation,
+    UnaryOperation,
 };
 
 pub const Node = union(NodeTag) {
@@ -325,6 +465,8 @@ pub const Node = union(NodeTag) {
     Return: ReturnNode,
     VariableDefinition: VariableDefinitionNode,
     VariableCall: VariableCallNode,
+    BinaryOperation: BinaryOperationNode,
+    UnaryOperation: UnaryOperationNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -335,6 +477,8 @@ pub const Node = union(NodeTag) {
             .Return => |node| return node.writeXML(writer, tabs),
             .VariableDefinition => |node| return node.writeXML(writer, tabs),
             .VariableCall => |node| return node.writeXML(writer, tabs),
+            .BinaryOperation => |node| return node.writeXML(writer, tabs),
+            .UnaryOperation => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -350,6 +494,8 @@ pub const Node = union(NodeTag) {
             .Return => |node| node.writeXML(writer, 0) catch unreachable,
             .VariableDefinition => |node| node.writeXML(writer, 0) catch unreachable,
             .VariableCall => |node| node.writeXML(writer, 0) catch unreachable,
+            .BinaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
+            .UnaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -527,11 +673,58 @@ pub const Parser = struct {
         };
     }
 
-    fn parseExpr(self: *Parser) Node {
+    fn parseValue(self: *Parser) Node {
         const current = self.expectCurrent();
         switch (current) {
             .Constant => |constant| return self.handleConstant(constant),
             .Identifier => |id| return self.handleIdentifier(id),
+            .Keyword => |keyword| {
+                if (keyword == lexer.TokenKeyword.Not) {
+                    self.advance();
+                    var value = self.allocator.create(Node) catch unreachable;
+                    value.* = self.parseExpr();
+                    return Node {
+                        .UnaryOperation = .{
+                            .operator = .Not,
+                            .value = value
+                        }
+                    };
+                } else {
+                    std.log.err("Unexpected Token '{full}', should be expr!", .{current});
+                    @panic("");
+                }
+            },
+            .Symbol => |symbol| {
+                if (symbol == lexer.TokenSymbol.LeftParenthesis) {
+                    self.advance();
+                    const expr = self.parseExpr();
+                    self.expectSymbol(lexer.TokenSymbol.RightParenthesis);
+                    return expr;
+                } else if (symbol == lexer.TokenSymbol.Plus) {
+                    self.advance();
+                    var value = self.allocator.create(Node) catch unreachable;
+                    value.* = self.parseExpr();
+                    return Node {
+                        .UnaryOperation = .{
+                            .operator = .Add,
+                            .value = value
+                        }
+                    };
+                } else if (symbol == lexer.TokenSymbol.Dash) {
+                    self.advance();
+                    var value = self.allocator.create(Node) catch unreachable;
+                    value.* = self.parseExpr();
+                    return Node {
+                        .UnaryOperation = .{
+                            .operator = .Subtract,
+                            .value = value
+                        }
+                    };
+                } else {
+                    std.log.err("Unexpected Token '{full}', should be expr!", .{current});
+                    @panic("");
+                }
+            },
             else => {
                 std.log.err("Unexpected Token '{full}', should be expr!", .{current});
                 @panic("");
@@ -539,10 +732,180 @@ pub const Parser = struct {
         }
     }
 
+    fn parseExpr0(self: *Parser) Node {
+        var lhs = self.parseValue();
+        self.advance();
+
+        while (self.getCurrent()) |current| {
+            var operator: Operator = undefined;
+            if (current.isSymbol(lexer.TokenSymbol.Equal)) {
+                operator = Operator.Assignment;
+            } else {
+                break;
+            }
+            self.advance();
+            const rhs = self.parseExpr();
+            self.advance();
+
+            var lhs_alloc = self.allocator.create(Node) catch unreachable;
+            lhs_alloc.* = lhs;
+            var rhs_alloc = self.allocator.create(Node) catch unreachable;
+            rhs_alloc.* = rhs;
+
+            lhs = Node {
+                .BinaryOperation = . {
+                    .lhs = lhs_alloc,
+                    .operator = operator,
+                    .rhs = rhs_alloc
+                }
+            };
+        }
+
+        return lhs;
+    }
+
+    fn parseExpr1(self: *Parser) Node {
+        var lhs = self.parseExpr0();
+
+        while (self.getCurrent()) |current| {
+            var operator: Operator = undefined;
+            if (current.isSymbol(lexer.TokenSymbol.Star)) {
+                operator = Operator.Multiply;
+            } else if (current.isSymbol(lexer.TokenSymbol.Slash)) {
+                operator = Operator.Divide;
+            } else {
+                break;
+            }
+            self.advance();
+            const rhs = self.parseExpr0();
+
+            var lhs_alloc = self.allocator.create(Node) catch unreachable;
+            lhs_alloc.* = lhs;
+            var rhs_alloc = self.allocator.create(Node) catch unreachable;
+            rhs_alloc.* = rhs;
+
+            lhs = Node {
+                .BinaryOperation = . {
+                    .lhs = lhs_alloc,
+                    .operator = operator,
+                    .rhs = rhs_alloc
+                }
+            };
+        }
+
+        return lhs;
+    }
+
+    fn parseExpr2(self: *Parser) Node {
+        var lhs = self.parseExpr1();
+
+        while (self.getCurrent()) |current| {
+            var operator: Operator = undefined;
+            if (current.isSymbol(lexer.TokenSymbol.Plus)) {
+                operator = Operator.Add;
+            } else if (current.isSymbol(lexer.TokenSymbol.Dash)) {
+                operator = Operator.Subtract;
+            } else {
+                break;
+            }
+            self.advance();
+            const rhs = self.parseExpr1();
+
+            var lhs_alloc = self.allocator.create(Node) catch unreachable;
+            lhs_alloc.* = lhs;
+            var rhs_alloc = self.allocator.create(Node) catch unreachable;
+            rhs_alloc.* = rhs;
+
+            lhs = Node {
+                .BinaryOperation = . {
+                    .lhs = lhs_alloc,
+                    .operator = operator,
+                    .rhs = rhs_alloc
+                }
+            };
+        }
+
+        return lhs;
+    }
+
+    fn parseExpr3(self: *Parser) Node {
+        var lhs = self.parseExpr2();
+
+        while (self.getCurrent()) |current| {
+            var operator: Operator = undefined;
+            if (current.isSymbol(lexer.TokenSymbol.RightAngle)) {
+                operator = Operator.Greater;
+            } else if (current.isSymbol(lexer.TokenSymbol.RightAngleEqual)) {
+                operator = Operator.GreaterOrEqual;
+            } else if (current.isSymbol(lexer.TokenSymbol.LeftAngle)) {
+                operator = Operator.Less;
+            } else if (current.isSymbol(lexer.TokenSymbol.LeftAngleEqual)) {
+                operator = Operator.LessOrEqual;
+            } else if (current.isSymbol(lexer.TokenSymbol.DoubleEqual)) {
+                operator = Operator.Equal;
+            } else if (current.isSymbol(lexer.TokenSymbol.ExclamationMarkEqual)) {
+                operator = Operator.NotEqual;
+            } else {
+                break;
+            }
+            self.advance();
+            const rhs = self.parseExpr2();
+
+            var lhs_alloc = self.allocator.create(Node) catch unreachable;
+            lhs_alloc.* = lhs;
+            var rhs_alloc = self.allocator.create(Node) catch unreachable;
+            rhs_alloc.* = rhs;
+
+            lhs = Node {
+                .BinaryOperation = . {
+                    .lhs = lhs_alloc,
+                    .operator = operator,
+                    .rhs = rhs_alloc
+                }
+            };
+        }
+
+        return lhs;
+    }
+
+    fn parseExpr4(self: *Parser) Node {
+        var lhs = self.parseExpr3();
+
+        while (self.getCurrent()) |current| {
+            var operator: Operator = undefined;
+            if (current.isKeyword(lexer.TokenKeyword.And)) {
+                operator = Operator.And;
+            } else if (current.isKeyword(lexer.TokenKeyword.Or)) {
+                operator = Operator.Or;
+            } else {
+                break;
+            }
+            self.advance();
+            const rhs = self.parseExpr3();
+
+            var lhs_alloc = self.allocator.create(Node) catch unreachable;
+            lhs_alloc.* = lhs;
+            var rhs_alloc = self.allocator.create(Node) catch unreachable;
+            rhs_alloc.* = rhs;
+
+            lhs = Node {
+                .BinaryOperation = . {
+                    .lhs = lhs_alloc,
+                    .operator = operator,
+                    .rhs = rhs_alloc
+                }
+            };
+        }
+
+        return lhs;
+    }
+
+    const parseExpr = parseExpr4;
+
     fn handleConstant(self: *Parser, value: lexer.TokenConstant) Node {
+        _ = self;
         switch (value) {
             .String => |str| {
-                self.advance();
                 return Node {
                     .Value = . {
                         .String = str
@@ -550,7 +913,6 @@ pub const Parser = struct {
                 };
             },
             .Int => |num| {
-                self.advance();
                 return Node {
                     .Value = . {
                         .Int = num
@@ -558,13 +920,19 @@ pub const Parser = struct {
                 };
             },
             .Float => |num| {
-                self.advance();
                 return Node {
                     .Value = . {
                         .Float = num
                     }
                 };
-            }
+            },
+            .Bool => |b| {
+                return Node {
+                    .Value = . {
+                        .Bool = b
+                    }
+                };
+            },
         }
     }
 
@@ -581,7 +949,6 @@ pub const Parser = struct {
             parameters.append(expr) catch unreachable;
             current = self.expectCurrent();
         }
-        self.advance();
         
         return Node {
             .FunctionCall = .{
@@ -599,7 +966,6 @@ pub const Parser = struct {
             }
         }
 
-        self.advance();
         return Node {
             .VariableCall = . {
                 .name = id
@@ -680,6 +1046,11 @@ pub const Parser = struct {
             .Return => return self.parseReturn(),
             .Const => return self.parseVariableDefinition(true),
             .Var => return self.parseVariableDefinition(false),
+            .Not => return self.parseExpr(),
+            else => {
+                std.log.err("Unexpected token '{full}'", .{self.getCurrent().?});
+                @panic("");
+            }
         }
     }
 
@@ -692,9 +1063,14 @@ pub const Parser = struct {
                 self.advance();
                 return self.parseCurrent();
             },
-            else => {
-                std.log.err("Unexpected token '{full}'", .{current});
-                @panic("");
+            .Symbol => |symbol| {
+                switch (symbol) {
+                    .LeftParenthesis, .Plus, .Dash => return self.parseExpr(),
+                    else => {
+                        std.log.err("Unexpected token '{full}'", .{current});
+                        @panic("");
+                    }
+                }
             }
         }
     }
