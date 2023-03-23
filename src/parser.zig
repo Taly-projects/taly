@@ -278,8 +278,12 @@ pub const VariableDefinitionNode = struct {
 
             try writer.writeAll("<value>\n");
 
-            try value.writeXML(writer, tabs + 1);
+            try value.writeXML(writer, tabs + 2);
 
+            // Add tabs (+ 1)
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+            
             try writer.writeAll("</value>\n");
         }
 

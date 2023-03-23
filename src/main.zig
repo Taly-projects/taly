@@ -13,6 +13,7 @@ pub fn main() !void {
 
     const path = std.mem.span(std.os.argv[1]);
     var print_ast: bool = false;
+    var run: bool = false;
 
     var i: usize = 1;
     while (i < std.os.argv.len) : (i += 1) {
@@ -24,9 +25,12 @@ pub fn main() !void {
             try stdout.writeAll("\t-h or --help\t\t\t\tDisplay usage\n");
             try stdout.writeAll("\t-v or --version\t\t\tPrint the current version\n");
             try stdout.writeAll("\t--ast\t\t\t\t\t\t\t\tCompile and output the ast\n");
+            try stdout.writeAll("\t--run\t\t\t\t\t\t\t\tRun the compilated program (using gcc)\n");
             return;
         } else if (std.mem.eql(u8, arg, "--ast")) {
             print_ast = true;
+        } else if (std.mem.eql(u8, arg, "--run")) {
+            run = true;
         } else if (std.mem.eql(u8, arg, "-v") or std.mem.eql(u8, arg, "--version")) {
             try stdout.writeAll("Taly 0.2.0-dev\n");
             return;
@@ -107,5 +111,18 @@ pub fn main() !void {
         
     }
 
-    try stdout.writeAll("Compilation successfull!\n");
+
+    if (run) {
+        const arg = [_][]const u8 {"gcc", "out/main.c", "-o", "out/main"};
+        var child_process = std.ChildProcess.init(&arg, arena.allocator());
+        var buffer = arena.allocator().alloc(u8, 248) catch unreachable;
+        child_process.cwd = try std.os.getcwd(buffer);
+        _ = try child_process.spawnAndWait();
+
+        const arg2 = [_][]const u8 {"out/main"};
+        child_process.argv = &arg2;
+        _ = try child_process.spawnAndWait();
+    } else {
+        try stdout.writeAll("Compilation successfull!\n");
+    }
 }

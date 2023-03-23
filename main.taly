@@ -2,9 +2,9 @@ use "std-stdio"
 
 extern fn printf(msg: c_string)
 
-fn HELLO(): c_string => "Hello"
+fn HELLO(): c_string => "Hello, world!\n"
 
 # main function
 fn main() =>
-    const msg: c_string = "Hello, world"
+    const msg: c_string = HELLO()
     printf(msg)
