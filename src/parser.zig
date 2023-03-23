@@ -312,6 +312,7 @@ pub const Operator = enum {
     Subtract,
     Multiply,
     Divide,
+    Assignment,
 
     pub fn writeXML(self: *const Operator, writer: anytype, tabs: usize) anyerror!void {
         // Add tabs
@@ -324,6 +325,7 @@ pub const Operator = enum {
             .Subtract => try writer.writeAll("subtract"),
             .Multiply => try writer.writeAll("mutliply"),
             .Divide => try writer.writeAll("divide"),
+            .Assignment => try writer.writeAll("assignment"),
         }
         try writer.writeAll("</operator\n>");
     }
@@ -633,15 +635,13 @@ pub const Parser = struct {
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
-            if (current.isSymbol(lexer.TokenSymbol.Star)) {
-                operator = Operator.Multiply;
-            } else if (current.isSymbol(lexer.TokenSymbol.Slash)) {
-                operator = Operator.Divide;
+            if (current.isSymbol(lexer.TokenSymbol.Equal)) {
+                operator = Operator.Assignment;
             } else {
                 break;
             }
             self.advance();
-            const rhs = self.parseValue();
+            const rhs = self.parseExpr();
             self.advance();
 
             var lhs_alloc = self.allocator.create(Node) catch unreachable;
@@ -663,6 +663,38 @@ pub const Parser = struct {
 
     fn parseExpr1(self: *Parser) Node {
         var lhs = self.parseExpr0();
+
+        while (self.getCurrent()) |current| {
+            var operator: Operator = undefined;
+            if (current.isSymbol(lexer.TokenSymbol.Star)) {
+                operator = Operator.Multiply;
+            } else if (current.isSymbol(lexer.TokenSymbol.Slash)) {
+                operator = Operator.Divide;
+            } else {
+                break;
+            }
+            self.advance();
+            const rhs = self.parseExpr0();
+
+            var lhs_alloc = self.allocator.create(Node) catch unreachable;
+            lhs_alloc.* = lhs;
+            var rhs_alloc = self.allocator.create(Node) catch unreachable;
+            rhs_alloc.* = rhs;
+
+            lhs = Node {
+                .BinaryOperation = . {
+                    .lhs = lhs_alloc,
+                    .operator = operator,
+                    .rhs = rhs_alloc
+                }
+            };
+        }
+
+        return lhs;
+    }
+
+    fn parseExpr2(self: *Parser) Node {
+        var lhs = self.parseExpr1();
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
@@ -693,7 +725,7 @@ pub const Parser = struct {
         return lhs;
     }
 
-    const parseExpr = parseExpr1;
+    const parseExpr = parseExpr2;
 
     fn handleConstant(self: *Parser, value: lexer.TokenConstant) Node {
         _ = self;

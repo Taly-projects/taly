@@ -231,6 +231,7 @@ pub const Operator = enum {
     Subtract,
     Multiply,
     Divide,
+    Assignment,
 };
 
 pub const BinaryOperationNode = struct {
@@ -261,6 +262,10 @@ pub const BinaryOperationNode = struct {
             },
             .Divide => {
                 try writer.writeAll(" / ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .Assignment => {
+                try writer.writeAll(" = ");
                 _ = try self.rhs.writeC(writer, 0);
             }
         }
@@ -560,6 +565,7 @@ pub const Translator = struct {
             .Subtract => operator = .Subtract,
             .Multiply => operator = .Multiply,
             .Divide => operator = .Divide,
+            .Assignment => operator = .Assignment,
         }
 
         res.source.append(Node {
