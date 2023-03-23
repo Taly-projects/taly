@@ -4,6 +4,6 @@ extern fn printf(msg: c_string)
 
 fn HELLO(): c_string => "Hello"
 
+# main function
 fn main() =>
     printf("Hello, world")
-    return 0

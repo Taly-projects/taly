@@ -339,11 +339,19 @@ pub const Lexer = struct {
                         }
                     },
                     ':' => tokens.append(Token { .Symbol = .Colon }) catch unreachable,
-                    ' ' => {
+                    ' ', '\r' => {
                         // Ignored
                     },
                     '\n' => tokens.append(Token { .Format = .NewLine}) catch unreachable,
                     '\t' => tokens.append(Token { .Format = .Tab}) catch unreachable,
+                    '#' => {
+                        self.advance();
+                        current = self.getCurrent();
+                        while (current != '\n' and current != 0) {
+                            self.advance();
+                            current = self.getCurrent();
+                        }
+                    },
                     0 => break,
                     else => {
                         std.log.err("Unexpected char '{c}'", .{current});
