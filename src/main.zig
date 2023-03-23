@@ -5,11 +5,37 @@ const translator = @import("translator.zig");
 const generator = @import("generator.zig");
 
 pub fn main() !void {
+    const stdout = std.io.getStdOut();
+    if (std.os.argv.len <= 1) {
+        try stdout.writeAll("No file specified! use -h or --help to see all the commands.\n");
+        return;
+    } 
+
+    const path = std.mem.span(std.os.argv[1]);
+    var print_ast: bool = false;
+
+    var i: usize = 1;
+    while (i < std.os.argv.len) : (i += 1) {
+        const arg = std.mem.span(std.os.argv[i]);
+        if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
+            try stdout.writeAll("Usage: taly [path] [args]\n");
+            try stdout.writeAll("\n");
+            try stdout.writeAll("Possible arguments:\n");
+            try stdout.writeAll("\t-h or --help\t\t\t\tDisplay usage\n");
+            try stdout.writeAll("\t-v or --version\t\t\tPrint the current version\n");
+            try stdout.writeAll("\t--ast\t\t\t\t\t\t\t\tCompile and output the ast\n");
+            return;
+        } else if (std.mem.eql(u8, arg, "--ast")) {
+            print_ast = true;
+        } else if (std.mem.eql(u8, arg, "-v") or std.mem.eql(u8, arg, "--version")) {
+            try stdout.writeAll("Taly 0.2.0-dev\n");
+            return;
+        }
+    }
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     
-    const stdout = std.io.getStdOut();        
-
     // Create Output Dir
     try std.fs.cwd().deleteTree("out");
     try std.fs.cwd().makeDir("out");
@@ -17,66 +43,34 @@ pub fn main() !void {
     defer out_dir.close();
 
     // Read Source
-    var file = try std.fs.cwd().openFile("main.taly", .{});
+    var file = try std.fs.cwd().openFile(path, .{});
     const file_size = (try file.stat()).size;
     var src = try arena.allocator().alloc(u8, file_size);
     try file.reader().readNoEof(src);
 
-    stdout.writeAll("### Lexer ###\n") catch unreachable;
-
     var lex = lexer.Lexer.init(src);
     const tokens = lex.tokenize(arena.allocator());
 
-    for (tokens.items) |token| {
-        std.log.info("{}", .{token});
-    }
-
     var par = parser.Parser.init(tokens, arena.allocator());
     const ast = par.parse();
-
-    // Create Output File
-    var parser_out = try out_dir.createFile("parser.xml", .{});
-    defer parser_out.close();
-
-    for (ast.items) |node| {
-        node.writeXML(parser_out.writer(), 0) catch unreachable;
-    }
 
     // Generator
     var gen = generator.Generator.init(ast, arena.allocator());
     const gen_ast = gen.generate();
 
-    // Create Output File
-    var generator_out = try out_dir.createFile("generator.xml", .{});
-    defer generator_out.close();
+    if (print_ast) {
+        // Create Output File
+        var generator_out = try out_dir.createFile("generator.xml", .{});
+        defer generator_out.close();
 
-    for (gen_ast.items) |node| {
-        node.writeXML(generator_out.writer(), 0) catch unreachable;
+        for (gen_ast.items) |node| {
+            node.writeXML(generator_out.writer(), 0) catch unreachable;
+        }
     }
     
     // Translator
     var tra = translator.Translator.init(gen_ast, arena.allocator());
     const c_project = tra.translate();
-    
-    // for (c_project.files.items) |file| {
-    //     // Create Output File
-    //     var translator_out = try out_dir.createFile("translator.xml", .{});
-    //     defer translator_c_out.close();
-        
-    //     for (file.source.items) |node| {
-    //         node.writeXML(translator_c_out.writer(), 0) catch unreachable;
-    //     }
-        
-    //     // Create Output File
-    //     var translator_out = try out_dir.createFile("translator.xml", .{});
-    //     defer translator_h_out.close();
-        
-    //     for (file.source.items) |node| {
-    //         node.writeXML(translator_c_out.writer(), 0) catch unreachable;
-    //     }
-    // }
-
-    // Create Output File
 
     for (c_project.files.items) |c_file| {
         var file_source_name = arena.allocator().alloc(u8, c_file.name.len + 2) catch unreachable;
