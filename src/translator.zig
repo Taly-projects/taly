@@ -232,6 +232,12 @@ pub const Operator = enum {
     Multiply,
     Divide,
     Assignment,
+    Greater,
+    GreaterOrEqual,
+    Less,
+    LessOrEqual,
+    Equal,
+    NotEqual
 };
 
 pub const BinaryOperationNode = struct {
@@ -267,7 +273,31 @@ pub const BinaryOperationNode = struct {
             .Assignment => {
                 try writer.writeAll(" = ");
                 _ = try self.rhs.writeC(writer, 0);
-            }
+            },
+            .Greater => {
+                try writer.writeAll(" > ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .GreaterOrEqual => {
+                try writer.writeAll(" >= ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .Less => {
+                try writer.writeAll(" < ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .LessOrEqual => {
+                try writer.writeAll(" <= ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .Equal => {
+                try writer.writeAll(" == ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .NotEqual => {
+                try writer.writeAll(" != ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
         }
         try writer.writeAll(")");
 
@@ -567,6 +597,12 @@ pub const Translator = struct {
             .Multiply => operator = .Multiply,
             .Divide => operator = .Divide,
             .Assignment => operator = .Assignment,
+            .Greater => operator = .Greater,
+            .GreaterOrEqual => operator = .GreaterOrEqual,
+            .Less => operator = .Less,
+            .LessOrEqual => operator = .LessOrEqual,
+            .Equal => operator = .Equal,
+            .NotEqual => operator = .NotEqual,
         }
 
         res.source.append(Node {

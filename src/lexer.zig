@@ -52,6 +52,12 @@ pub const TokenSymbol = enum {
     Dash,
     Star,
     Slash,
+    RightAngle,
+    RightAngleEqual,
+    LeftAngle,
+    LeftAngleEqual,
+    DoubleEqual,
+    ExclamationMarkEqual,
 
     pub fn format(self: *const TokenSymbol, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         // _ = fmt;
@@ -69,6 +75,12 @@ pub const TokenSymbol = enum {
                 .Dash => return std.fmt.format(writer, "Dash `-`", .{}),
                 .Star => return std.fmt.format(writer, "Star `*`", .{}),
                 .Slash => return std.fmt.format(writer, "Slash `/`", .{}),
+                .RightAngle => return std.fmt.format(writer, "Right Angle `>`", .{}),
+                .RightAngleEqual => return std.fmt.format(writer, "Right Angle Equal `>=`", .{}),
+                .LeftAngle => return std.fmt.format(writer, "Left Angle `<`", .{}),
+                .LeftAngleEqual => return std.fmt.format(writer, "Left Angle Equal `<=`", .{}),
+                .DoubleEqual => return std.fmt.format(writer, "Double Equal `==`", .{}),
+                .ExclamationMarkEqual => return std.fmt.format(writer, "Exclamation Mark Equal `!=`", .{}),
             }
         } else {
             switch (self.*) {
@@ -82,6 +94,12 @@ pub const TokenSymbol = enum {
                 .Dash => return std.fmt.format(writer, "-", .{}),
                 .Star => return std.fmt.format(writer, "*", .{}),
                 .Slash => return std.fmt.format(writer, "/", .{}),
+                .RightAngle => return std.fmt.format(writer, ">", .{}),
+                .RightAngleEqual => return std.fmt.format(writer, ">=", .{}),
+                .LeftAngle => return std.fmt.format(writer, "<", .{}),
+                .LeftAngleEqual => return std.fmt.format(writer, "<=", .{}),
+                .DoubleEqual => return std.fmt.format(writer, "==", .{}),
+                .ExclamationMarkEqual => return std.fmt.format(writer, "!=", .{}),
             }
         }
     }
@@ -373,8 +391,39 @@ pub const Lexer = struct {
                         if (next == '>') {
                             self.advance();
                             tokens.append(Token { .Symbol = .RightDoubleArrow }) catch unreachable;
+                        } else if (next == '=') {
+                            self.advance();
+                            tokens.append(Token { .Symbol = .DoubleEqual }) catch unreachable;
                         } else {
                             tokens.append(Token { .Symbol = .Equal }) catch unreachable;
+                        }
+                    },
+                    '>' => {
+                        const next = self.peek(1);
+                        if (next == '=') {
+                            self.advance();
+                            tokens.append(Token { .Symbol = .RightAngleEqual }) catch unreachable;
+                        } else {
+                            tokens.append(Token { .Symbol = .RightAngle }) catch unreachable;
+                        }
+                    },
+                    '<' => {
+                        const next = self.peek(1);
+                        if (next == '=') {
+                            self.advance();
+                            tokens.append(Token { .Symbol = .LeftAngleEqual }) catch unreachable;
+                        } else {
+                            tokens.append(Token { .Symbol = .LeftAngle }) catch unreachable;
+                        }
+                    },
+                    '!' => {
+                        const next = self.peek(1);
+                        if (next == '=') {
+                            self.advance();
+                            tokens.append(Token { .Symbol = .ExclamationMarkEqual }) catch unreachable;
+                        } else {
+                            std.log.err("Unexpected char '!'", .{});
+                            @panic("");
                         }
                     },
                     ':' => tokens.append(Token { .Symbol = .Colon }) catch unreachable,
