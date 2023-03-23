@@ -240,6 +240,7 @@ pub const Operator = enum {
     NotEqual,
     And,
     Or,
+    Not,
 };
 
 pub const BinaryOperationNode = struct {
@@ -308,6 +309,39 @@ pub const BinaryOperationNode = struct {
                 try writer.writeAll(" || ");
                 _ = try self.rhs.writeC(writer, 0);
             },
+            else => unreachable,
+        }
+        try writer.writeAll(")");
+
+        return true;
+    }
+};
+
+pub const UnaryOperationNode = struct {
+    operator: Operator,
+    value: *Node,
+
+    pub fn writeC(self: *const UnaryOperationNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("(");
+        
+        switch (self.operator) {
+            .Add => {
+                try writer.writeAll("+");
+                _ = try self.value.writeC(writer, 0);
+            },
+            .Subtract => {
+                try writer.writeAll("-");
+                _ = try self.value.writeC(writer, 0);
+            },
+            .Not => {
+                try writer.writeAll("!");
+                _ = try self.value.writeC(writer, 0);
+            },
+            else => unreachable,
         }
         try writer.writeAll(")");
 
@@ -325,6 +359,7 @@ pub const NodeTag = enum {
     VariableDefinition,
     VariableCall,
     BinaryOperation,
+    UnaryOperation,
 };
 
 pub const Node = union(NodeTag) {
@@ -337,6 +372,7 @@ pub const Node = union(NodeTag) {
     VariableDefinition: VariableDefinitionNode,
     VariableCall: VariableCallNode,
     BinaryOperation: BinaryOperationNode,
+    UnaryOperation: UnaryOperationNode,
 
     pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -349,6 +385,7 @@ pub const Node = union(NodeTag) {
             .VariableDefinition => |node| return node.writeC(writer, tabs),
             .VariableCall => |node| return node.writeC(writer, tabs),
             .BinaryOperation => |node| return node.writeC(writer, tabs),
+            .UnaryOperation => |node| return node.writeC(writer, tabs),
         }
     }
 
@@ -615,6 +652,7 @@ pub const Translator = struct {
             .NotEqual => operator = .NotEqual,
             .And => operator = .And,
             .Or => operator = .Or,
+            else => unreachable
         }
 
         res.source.append(Node {
@@ -622,6 +660,32 @@ pub const Translator = struct {
                 .lhs = lhs_node,
                 .operator = operator,
                 .rhs = rhs_node,
+            }
+        }) catch unreachable;
+
+        return res;
+    }
+
+    fn translateUnaryOperation(self: *Translator, bin_op: parser.UnaryOperationNode) File {
+        var res = File.init("_", self.allocator);
+
+        var value_res = self.translateNode(bin_op.value.*);
+        var value_node = self.allocator.create(Node) catch unreachable;
+        value_node.* = value_res.source.pop();
+        res.append(&value_res);
+
+        var operator: Operator = undefined;
+        switch (bin_op.operator) {
+            .Add => operator = .Add,
+            .Subtract => operator = .Subtract,
+            .Not => operator = .Not,
+            else => unreachable
+        }
+
+        res.source.append(Node {
+            .UnaryOperation = UnaryOperationNode {
+                .operator = operator,
+                .value = value_node,
             }
         }) catch unreachable;
 
@@ -643,6 +707,7 @@ pub const Translator = struct {
             .VariableDefinition => |var_def| res.append(&self.translateVariableDefinition(var_def)),
             .VariableCall => |var_call| res.append(&self.translateVariableCall(var_call)),
             .BinaryOperation => |bin_op| res.append(&self.translateBinaryOperation(bin_op)),
+            .UnaryOperation => |bin_op| res.append(&self.translateUnaryOperation(bin_op)),
         }
         return res;
     }

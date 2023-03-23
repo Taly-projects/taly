@@ -330,6 +330,7 @@ pub const Operator = enum {
     NotEqual,
     And,
     Or,
+    Not,
 
     pub fn writeXML(self: *const Operator, writer: anytype, tabs: usize) anyerror!void {
         // Add tabs
@@ -351,6 +352,7 @@ pub const Operator = enum {
             .NotEqual => try writer.writeAll("not equal"),
             .And => try writer.writeAll("and"),
             .Or => try writer.writeAll("or"),
+            .Not => try writer.writeAll("not"),
         }
         try writer.writeAll("</operator\n>");
     }
@@ -390,7 +392,7 @@ pub const BinaryOperationNode = struct {
 
         try writer.writeAll("<rhs>\n");
 
-        try self.lhs.writeXML(writer, tabs + 2);
+        try self.rhs.writeXML(writer, tabs + 2);
 
         // Add tabs
         i = 0;
@@ -407,6 +409,42 @@ pub const BinaryOperationNode = struct {
     }
 };
 
+pub const UnaryOperationNode = struct {
+    operator: Operator,
+    value: *Node,
+
+    pub fn writeXML(self: *const UnaryOperationNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        
+        try writer.writeAll("<unary-op>\n");
+
+        try self.operator.writeXML(writer, tabs + 1);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<value>\n");
+
+        try self.value.writeXML(writer, tabs + 2);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</value>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</unary-op>\n");
+
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
@@ -416,6 +454,7 @@ pub const NodeTag = enum {
     VariableDefinition,
     VariableCall,
     BinaryOperation,
+    UnaryOperation,
 };
 
 pub const Node = union(NodeTag) {
@@ -427,6 +466,7 @@ pub const Node = union(NodeTag) {
     VariableDefinition: VariableDefinitionNode,
     VariableCall: VariableCallNode,
     BinaryOperation: BinaryOperationNode,
+    UnaryOperation: UnaryOperationNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -438,6 +478,7 @@ pub const Node = union(NodeTag) {
             .VariableDefinition => |node| return node.writeXML(writer, tabs),
             .VariableCall => |node| return node.writeXML(writer, tabs),
             .BinaryOperation => |node| return node.writeXML(writer, tabs),
+            .UnaryOperation => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -454,6 +495,7 @@ pub const Node = union(NodeTag) {
             .VariableDefinition => |node| node.writeXML(writer, 0) catch unreachable,
             .VariableCall => |node| node.writeXML(writer, 0) catch unreachable,
             .BinaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
+            .UnaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -636,12 +678,48 @@ pub const Parser = struct {
         switch (current) {
             .Constant => |constant| return self.handleConstant(constant),
             .Identifier => |id| return self.handleIdentifier(id),
+            .Keyword => |keyword| {
+                if (keyword == lexer.TokenKeyword.Not) {
+                    self.advance();
+                    var value = self.allocator.create(Node) catch unreachable;
+                    value.* = self.parseExpr();
+                    return Node {
+                        .UnaryOperation = .{
+                            .operator = .Not,
+                            .value = value
+                        }
+                    };
+                } else {
+                    std.log.err("Unexpected Token '{full}', should be expr!", .{current});
+                    @panic("");
+                }
+            },
             .Symbol => |symbol| {
                 if (symbol == lexer.TokenSymbol.LeftParenthesis) {
                     self.advance();
                     const expr = self.parseExpr();
                     self.expectSymbol(lexer.TokenSymbol.RightParenthesis);
                     return expr;
+                } else if (symbol == lexer.TokenSymbol.Plus) {
+                    self.advance();
+                    var value = self.allocator.create(Node) catch unreachable;
+                    value.* = self.parseExpr();
+                    return Node {
+                        .UnaryOperation = .{
+                            .operator = .Add,
+                            .value = value
+                        }
+                    };
+                } else if (symbol == lexer.TokenSymbol.Dash) {
+                    self.advance();
+                    var value = self.allocator.create(Node) catch unreachable;
+                    value.* = self.parseExpr();
+                    return Node {
+                        .UnaryOperation = .{
+                            .operator = .Subtract,
+                            .value = value
+                        }
+                    };
                 } else {
                     std.log.err("Unexpected Token '{full}', should be expr!", .{current});
                     @panic("");
@@ -968,6 +1046,7 @@ pub const Parser = struct {
             .Return => return self.parseReturn(),
             .Const => return self.parseVariableDefinition(true),
             .Var => return self.parseVariableDefinition(false),
+            .Not => return self.parseExpr(),
             else => {
                 std.log.err("Unexpected token '{full}'", .{self.getCurrent().?});
                 @panic("");
@@ -986,7 +1065,7 @@ pub const Parser = struct {
             },
             .Symbol => |symbol| {
                 switch (symbol) {
-                    .LeftParenthesis => return self.parseExpr(),
+                    .LeftParenthesis, .Plus, .Dash => return self.parseExpr(),
                     else => {
                         std.log.err("Unexpected token '{full}'", .{current});
                         @panic("");

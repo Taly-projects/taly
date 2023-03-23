@@ -9,6 +9,7 @@ pub const TokenKeyword = enum {
     Const,
     And,
     Or,
+    Not,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         if (std.mem.eql(u8, data, "fn")) {
@@ -27,6 +28,8 @@ pub const TokenKeyword = enum {
             return TokenKeyword.And;
         } else if (std.mem.eql(u8, data, "or")) {
             return TokenKeyword.Or;
+        } else if (std.mem.eql(u8, data, "not")) {
+            return TokenKeyword.Not;
         }
 
         return null;
@@ -45,6 +48,7 @@ pub const TokenKeyword = enum {
             .Const => return std.fmt.format(writer, "const", .{}),
             .And => return std.fmt.format(writer, "and", .{}),
             .Or => return std.fmt.format(writer, "or", .{}),
+            .Not => return std.fmt.format(writer, "not", .{}),
         }
     }
 };
