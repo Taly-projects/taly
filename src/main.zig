@@ -107,10 +107,5 @@ pub fn main() !void {
         
     }
 
-    // for (c_ast.items) |node| {
-    //     if (node.writeC(c_out.writer(), 0) catch unreachable) {
-    //         c_out.writeAll(";") catch unreachable;
-    //     }
-    //     c_out.writeAll("\n") catch unreachable;
-    // }
+    try stdout.writeAll("Compilation successfull!\n");
 }

@@ -6,4 +6,5 @@ fn HELLO(): c_string => "Hello"
 
 # main function
 fn main() =>
-    printf("Hello, world")
+    const msg: c_string = "Hello, world"
+    printf(msg)

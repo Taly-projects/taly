@@ -240,12 +240,77 @@ pub const ReturnNode = struct {
     }
 };
 
+pub const VariableDefinitionNode = struct {
+    constant: bool,
+    name: []const u8,
+    data_type: []const u8,
+    value: ?*Node,
+
+    pub fn writeXML(self: *const VariableDefinitionNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<variable-def>\n");
+
+        // Add tabs (+ 1)
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        
+        try std.fmt.format(writer, "<constant>{}</constant>\n", .{self.constant});
+
+        // Add tabs (+ 1)
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        
+        try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
+
+        // Add tabs (+ 1)
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+    
+        try std.fmt.format(writer, "<data-type>{s}</data-type>\n", .{self.data_type});
+
+        if (self.value) |value| {
+            // Add tabs (+ 1)
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try writer.writeAll("<value>\n");
+
+            try value.writeXML(writer, tabs + 1);
+
+            try writer.writeAll("</value>\n");
+        }
+
+        // Add tabs
+        i = 0;        
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</variable-def>\n");
+    }
+};
+
+pub const VariableCallNode = struct {
+    name: []const u8,
+
+    pub fn writeXML(self: *const VariableCallNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<variable-call>{s}</variable-call>\n", .{self.name});
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
     FunctionCall,
     Use,
-    Return
+    Return,
+    VariableDefinition,
+    VariableCall,
 };
 
 pub const Node = union(NodeTag) {
@@ -254,6 +319,8 @@ pub const Node = union(NodeTag) {
     FunctionCall: FunctionCallNode,
     Use: UseNode,
     Return: ReturnNode,
+    VariableDefinition: VariableDefinitionNode,
+    VariableCall: VariableCallNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -262,6 +329,8 @@ pub const Node = union(NodeTag) {
             .FunctionCall => |node| return node.writeXML(writer, tabs),
             .Use => |node| return node.writeXML(writer, tabs),
             .Return => |node| return node.writeXML(writer, tabs),
+            .VariableDefinition => |node| return node.writeXML(writer, tabs),
+            .VariableCall => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -275,6 +344,8 @@ pub const Node = union(NodeTag) {
             .FunctionCall => |node| node.writeXML(writer, 0) catch unreachable,
             .Use => |node| node.writeXML(writer, 0) catch unreachable,
             .Return => |node| node.writeXML(writer, 0) catch unreachable,
+            .VariableDefinition => |node| node.writeXML(writer, 0) catch unreachable,
+            .VariableCall => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -297,6 +368,11 @@ pub const Parser = struct {
     fn getCurrent(self: *const Parser) ?lexer.Token {
         if (self.index >= self.tokens.items.len) return null;
         return self.tokens.items[self.index];
+    }
+
+    fn peek(self: *const Parser, offset: usize) ?lexer.Token {
+        if (self.index + offset >= self.tokens.items.len) return null;
+        return self.tokens.items[self.index + offset];
     }
 
     fn expectCurrent(self: *const Parser) lexer.Token {
@@ -451,6 +527,7 @@ pub const Parser = struct {
         const current = self.expectCurrent();
         switch (current) {
             .Constant => |constant| return self.handleConstant(constant),
+            .Identifier => |id| return self.handleIdentifier(id),
             else => {
                 std.log.err("Unexpected Token '{full}', should be expr!", .{current});
                 @panic("");
@@ -487,9 +564,7 @@ pub const Parser = struct {
         }
     }
 
-    fn handleIdentifier(self: *Parser, id: []const u8) Node {
-        self.advance();
-        self.expectSymbol(lexer.TokenSymbol.LeftParenthesis);
+    fn parseFunctionCall(self: *Parser, id: []const u8) Node {
         self.advance();
         var parameters = NodeList.init(self.allocator);
         var current = self.expectCurrent();
@@ -508,6 +583,22 @@ pub const Parser = struct {
             .FunctionCall = .{
                 .name = id,
                 .parameters = parameters
+            }
+        };
+    }
+
+    fn handleIdentifier(self: *Parser, id: []const u8) Node {
+        if (self.peek(1)) |next| {
+            if (next.isSymbol(lexer.TokenSymbol.LeftParenthesis)) {
+                self.advance();
+                return self.parseFunctionCall(id);
+            }
+        }
+
+        self.advance();
+        return Node {
+            .VariableCall = . {
+                .name = id
             }
         };
     }
@@ -542,6 +633,37 @@ pub const Parser = struct {
         };
     }
 
+    fn parseVariableDefinition(self: *Parser, constant: bool) Node {
+        self.advance();
+        const name = self.expectIdentifier();
+        self.advance();
+
+        // Expexcted because no inference for now!
+        self.expectSymbol(lexer.TokenSymbol.Colon);
+        self.advance();
+        const data_type = self.expectIdentifier();
+        self.advance();
+
+        var value: ?*Node = null;
+        if (self.getCurrent() != null) {
+            const current = self.getCurrent().?;
+            if (current.isSymbol(lexer.TokenSymbol.Equal)) {
+                self.advance();
+                value = self.allocator.create(Node) catch unreachable;
+                value.?.* = self.parseExpr();
+            }
+        }
+
+        return Node {
+            .VariableDefinition = . {
+                .constant = constant,
+                .name = name,
+                .data_type = data_type,
+                .value = value
+            }
+        };
+    }
+
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         switch (keyword) {
             .Fn => return self.parseFunctionDefinition(false),
@@ -552,14 +674,15 @@ pub const Parser = struct {
             },
             .Use => return self.parseUse(),
             .Return => return self.parseReturn(),
+            .Const => return self.parseVariableDefinition(true),
+            .Var => return self.parseVariableDefinition(false),
         }
     }
 
     fn parseCurrent(self: *Parser) Node {
         const current = self.expectCurrent();
         switch (current) {
-            .Constant => return self.parseExpr(),
-            .Identifier => |id| return self.handleIdentifier(id),
+            .Constant, .Identifier => return self.parseExpr(),
             .Keyword => |keyword| return self.handleKeyword(keyword),
             .Format => {
                 self.advance();
