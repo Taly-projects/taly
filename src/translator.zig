@@ -481,6 +481,62 @@ pub const Node = union(NodeTag) {
 
 pub const NodeList = std.ArrayList(Node);
 
+pub const File = struct {
+    name: []const u8,
+    source: NodeList,
+    header: NodeList,
+
+    pub fn init(name: []const u8, allocator: std.mem.Allocator) File {
+        return . {
+            .name = name,
+            .source = NodeList.init(allocator),
+            .header = NodeList.init(allocator)
+        };
+    }
+
+    pub fn append(self: *File, other: *const File) void {
+        const final_name = if (std.mem.eql(u8, self.name, other.name)) self.name
+        else if (std.mem.eql(u8, other.name, "_")) self.name
+        else if (std.mem.eql(u8, self.name, "_")) other.name
+        else @panic("File name not matching!");
+
+        self.name = final_name;
+        self.source.appendSlice(other.source.items) catch unreachable;
+        self.header.appendSlice(other.header.items) catch unreachable;
+    }
+
+};
+
+pub const FileList = std.ArrayList(File);
+
+pub const Project = struct {
+    allocator: std.mem.Allocator,
+    files: FileList,
+
+    pub fn init(allocator: std.mem.Allocator) Project {
+        return . {
+            .allocator = allocator,
+            .files = FileList.init(allocator)
+        };
+    }
+
+    pub fn getFile(self: *Project, name: []const u8) *File {
+        for (self.files.items) |*file| {
+            if (std.mem.eql(u8, file.name, name)) {
+                return file;
+            }
+        }
+
+        self.files.append(File {
+            .name = name,
+            .source = NodeList.init(self.allocator),
+            .header = NodeList.init(self.allocator),
+        }) catch unreachable;
+
+        return &self.files.items[self.files.items.len - 1];
+    }
+};
+
 pub const Translator = struct {
     allocator: std.mem.Allocator,
     ast: parser.NodeList,
@@ -511,10 +567,10 @@ pub const Translator = struct {
         }
     }
 
-    fn translateFunctionDefinition(self: *Translator, function_def: parser.FunctionDefinitionNode) NodeList {
-        var res = NodeList.init(self.allocator);
+    fn translateFunctionDefinition(self: *Translator, function_def: parser.FunctionDefinitionNode) File {
+        var file = File.init("_", self.allocator);
 
-        if (function_def.external) return res;
+        if (function_def.external) return file;
 
         var parameters = FunctionDefinitionParameters.init(self.allocator);
         for (function_def.parameters.items) |param| {
@@ -525,7 +581,7 @@ pub const Translator = struct {
         }
 
         if (!std.mem.eql(u8, function_def.name, "main")) {
-            res.append(Node {
+            file.header.append(Node {
                 .FunctionHeader = .{
                     .name = function_def.name,
                     .parameters = parameters,
@@ -536,10 +592,12 @@ pub const Translator = struct {
 
         var body = NodeList.init(self.allocator);
         for (function_def.body.items) |node| {
-            body.appendSlice(self.translateNode(node).items) catch unreachable;
+            const res = self.translateNode(node);
+            body.appendSlice(res.source.items) catch unreachable;
+            file.header.appendSlice(res.header.items) catch unreachable;
         }
 
-        res.append(Node {
+        file.source.append(Node {
             .FunctionSource = .{
                 .name = function_def.name,
                 .parameters = parameters,
@@ -548,13 +606,14 @@ pub const Translator = struct {
             }
         }) catch unreachable; 
 
-        return res;
+        return file;
     }
 
     fn translateFunctionCall(self: *Translator, function_call: parser.FunctionCallNode) Node {
         var parameters = NodeList.init(self.allocator);
         for (function_call.parameters.items) |param| {
-            parameters.appendSlice(self.translateNode(param).items) catch unreachable;
+            // Header ignore (there should be nothing in it)
+            parameters.appendSlice(self.translateNode(param).source.items) catch unreachable;
         }
 
         return Node {
@@ -586,17 +645,17 @@ pub const Translator = struct {
         return null;
     }
 
-    fn translateReturn(self: *Translator, return_node: parser.ReturnNode) NodeList {
-        var res = NodeList.init(self.allocator);
+    fn translateReturn(self: *Translator, return_node: parser.ReturnNode) File {
+        var res = File.init("_", self.allocator);
         var new_value: ?*Node = null;
         if (return_node.value) |value| {
             new_value = self.allocator.create(Node) catch unreachable;
             var node_res = self.translateNode(value.*);
-            new_value.?.* = node_res.pop();
-            res.appendSlice(node_res.items) catch unreachable;
+            new_value.?.* = node_res.source.pop();
+            res.append(&node_res);
         }
 
-        res.append(Node {
+        res.source.append(Node {
             .Return = . {
                 .value = new_value
             }
@@ -605,31 +664,49 @@ pub const Translator = struct {
         return res;
     }
 
-    fn translateNode(self: *Translator, node: parser.Node) NodeList {
-        var res = NodeList.init(self.allocator);
+    fn translateNode(self: *Translator, node: parser.Node) File {
+        var res = File.init("_", self.allocator);
         switch (node) {
-            .Value => |value| res.append(self.translateValueNode(value)) catch unreachable,
-            .FunctionDefinition => |function_def| res.appendSlice(self.translateFunctionDefinition(function_def).items) catch unreachable,
-            .FunctionCall => |function_call| res.append(self.translateFunctionCall(function_call)) catch unreachable,
+            .Value => |value| res.source.append(self.translateValueNode(value)) catch unreachable,
+            .FunctionDefinition => |function_def| res.append(&self.translateFunctionDefinition(function_def)),
+            .FunctionCall => |function_call| res.source.append(self.translateFunctionCall(function_call)) catch unreachable,
             .Use => |use| {
                 if (self.translateUse(use)) |res_node| {
-                    res.append(res_node) catch unreachable;
+                    res.header.append(res_node) catch unreachable;
                 } 
             },
-            .Return => |ret| res.appendSlice(self.translateReturn(ret).items) catch unreachable,
+            .Return => |ret| res.append(&self.translateReturn(ret)),
         }
         return res;
     }
 
-    pub fn translate(self: *Translator) NodeList {
-        var ast = NodeList.init(self.allocator);
+    pub fn translate(self: *Translator) Project {
+        var project = Project.init(self.allocator);
 
         while (self.getCurrent()) |current| {
-            ast.appendSlice(self.translateNode(current).items) catch unreachable;
+            const res = self.translateNode(current);
+            const file = if (std.mem.eql(u8, res.name, "_")) project.getFile("main")
+            else project.getFile(res.name);
+            file.append(&res);
             self.advance();
         }
 
-        return ast;
+        // Generate links between .h and .c
+        for (project.files.items) |*file| {
+            if (file.header.items.len != 0 and file.source.items.len != 0) {
+                var new_source = NodeList.init(self.allocator);
+                new_source.append(Node {
+                    .Include = . {
+                        .std = false,
+                        .path = file.name
+                    }
+                }) catch unreachable;
+                new_source.appendSlice(file.source.items) catch unreachable;
+                file.source = new_source;
+            }
+        }
+
+        return project;
     }
 
 };

@@ -56,24 +56,67 @@ pub fn main() !void {
     
     // Translator
     var tra = translator.Translator.init(gen_ast, arena.allocator());
-    const c_ast = tra.translate();
-
-    // Create Output File
-    var translator_out = try out_dir.createFile("translator.xml", .{});
-    defer translator_out.close();
+    const c_project = tra.translate();
     
-    for (c_ast.items) |node| {
-        node.writeXML(translator_out.writer(), 0) catch unreachable;
-    }
+    // for (c_project.files.items) |file| {
+    //     // Create Output File
+    //     var translator_out = try out_dir.createFile("translator.xml", .{});
+    //     defer translator_c_out.close();
+        
+    //     for (file.source.items) |node| {
+    //         node.writeXML(translator_c_out.writer(), 0) catch unreachable;
+    //     }
+        
+    //     // Create Output File
+    //     var translator_out = try out_dir.createFile("translator.xml", .{});
+    //     defer translator_h_out.close();
+        
+    //     for (file.source.items) |node| {
+    //         node.writeXML(translator_c_out.writer(), 0) catch unreachable;
+    //     }
+    // }
 
     // Create Output File
-    var c_out = try out_dir.createFile("main.c", .{});
-    defer c_out.close();
 
-    for (c_ast.items) |node| {
-        if (node.writeC(c_out.writer(), 0) catch unreachable) {
-            c_out.writeAll(";") catch unreachable;
+    for (c_project.files.items) |c_file| {
+        var file_source_name = arena.allocator().alloc(u8, c_file.name.len + 2) catch unreachable;
+        std.mem.copy(u8, file_source_name, c_file.name);
+        file_source_name[c_file.name.len] = '.';
+        file_source_name[c_file.name.len + 1] = 'c';
+
+        var file_header_name = arena.allocator().alloc(u8, c_file.name.len + 2) catch unreachable;
+        std.mem.copy(u8, file_header_name, c_file.name);
+        file_header_name[c_file.name.len] = '.';
+        file_header_name[c_file.name.len + 1] = 'h';
+
+
+        var c_out = try out_dir.createFile(file_source_name, .{});
+
+        for (c_file.source.items) |node| {
+            if (node.writeC(c_out.writer(), 0) catch unreachable) {
+                c_out.writeAll(";") catch unreachable;
+            }
+            c_out.writeAll("\n") catch unreachable;
         }
-        c_out.writeAll("\n") catch unreachable;
+
+        c_out.close();
+
+        var h_out = try out_dir.createFile(file_header_name, .{});
+        defer h_out.close();
+
+        for (c_file.header.items) |node| {
+            if (node.writeC(h_out.writer(), 0) catch unreachable) {
+                h_out.writeAll(";") catch unreachable;
+            }
+            h_out.writeAll("\n") catch unreachable;
+        }
+        
     }
+
+    // for (c_ast.items) |node| {
+    //     if (node.writeC(c_out.writer(), 0) catch unreachable) {
+    //         c_out.writeAll(";") catch unreachable;
+    //     }
+    //     c_out.writeAll("\n") catch unreachable;
+    // }
 }
