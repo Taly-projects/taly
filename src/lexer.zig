@@ -5,6 +5,8 @@ pub const TokenKeyword = enum {
     Extern,
     Use,
     Return,
+    Var,
+    Const,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         if (std.mem.eql(u8, data, "fn")) {
@@ -15,6 +17,10 @@ pub const TokenKeyword = enum {
             return TokenKeyword.Use;
         } else if (std.mem.eql(u8, data, "return")) {
             return TokenKeyword.Return;
+        } else if (std.mem.eql(u8, data, "var")) {
+            return TokenKeyword.Var;
+        } else if (std.mem.eql(u8, data, "const")) {
+            return TokenKeyword.Const;
         }
 
         return null;
@@ -29,6 +35,8 @@ pub const TokenKeyword = enum {
             .Use => return std.fmt.format(writer, "use", .{}),
             .Extern => return std.fmt.format(writer, "extern", .{}),
             .Return => return std.fmt.format(writer, "return", .{}),
+            .Var => return std.fmt.format(writer, "var", .{}),
+            .Const => return std.fmt.format(writer, "const", .{}),
         }
     }
 };
@@ -39,6 +47,7 @@ pub const TokenSymbol = enum {
     Comma,
     RightDoubleArrow,
     Colon,
+    Equal,
 
     pub fn format(self: *const TokenSymbol, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         // _ = fmt;
@@ -50,7 +59,8 @@ pub const TokenSymbol = enum {
                 .RightParenthesis => return std.fmt.format(writer, "Right Parenthesis `)`", .{}),
                 .Comma => return std.fmt.format(writer, "Comma `,`", .{}),
                 .RightDoubleArrow => return std.fmt.format(writer, "Right Double Arrow `=>`", .{}),
-                .Colon => return std.fmt.format(writer, "Colon `:`", .{})
+                .Colon => return std.fmt.format(writer, "Colon `:`", .{}),
+                .Equal => return std.fmt.format(writer, "Equal `=`", .{}),
             }
         } else {
             switch (self.*) {
@@ -58,7 +68,8 @@ pub const TokenSymbol = enum {
                 .RightParenthesis => return std.fmt.format(writer, ")", .{}),
                 .Comma => return std.fmt.format(writer, ",", .{}),
                 .RightDoubleArrow => return std.fmt.format(writer, "=>", .{}),
-                .Colon => return std.fmt.format(writer, ":", .{})
+                .Colon => return std.fmt.format(writer, ":", .{}),
+                .Equal => return std.fmt.format(writer, "=", .{}),
             }
         }
     }
@@ -335,15 +346,23 @@ pub const Lexer = struct {
                             self.advance();
                             tokens.append(Token { .Symbol = .RightDoubleArrow }) catch unreachable;
                         } else {
-                            @panic("Unimplemented!");
+                            tokens.append(Token { .Symbol = .Equal }) catch unreachable;
                         }
                     },
                     ':' => tokens.append(Token { .Symbol = .Colon }) catch unreachable,
-                    ' ' => {
+                    ' ', '\r' => {
                         // Ignored
                     },
                     '\n' => tokens.append(Token { .Format = .NewLine}) catch unreachable,
                     '\t' => tokens.append(Token { .Format = .Tab}) catch unreachable,
+                    '#' => {
+                        self.advance();
+                        current = self.getCurrent();
+                        while (current != '\n' and current != 0) {
+                            self.advance();
+                            current = self.getCurrent();
+                        }
+                    },
                     0 => break,
                     else => {
                         std.log.err("Unexpected char '{c}'", .{current});

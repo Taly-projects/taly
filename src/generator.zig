@@ -48,7 +48,7 @@ pub const Generator = struct {
                             }
                         };
                     }
-                } else {
+                } else if (return_type != null) {
                     var return_value: ?*parser.Node = self.allocator.create(parser.Node) catch unreachable;
                     return_value.?.* = gen;
                     gen = . {
@@ -56,7 +56,6 @@ pub const Generator = struct {
                             .value = return_value
                         }
                     };
-                    // TODO: Automatic return
                 }
             }
             body.append(gen) catch unreachable;
