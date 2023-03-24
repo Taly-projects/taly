@@ -1,5 +1,6 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
+const position = @import("position.zig");
 
 pub const ValueNodeTag = enum {
     String,
@@ -503,84 +504,94 @@ pub const Node = union(NodeTag) {
 pub const NodeList = std.ArrayList(Node);
 
 pub const Parser = struct {
+    file_name: []const u8,
+    src: []const u8,
     allocator: std.mem.Allocator,
     tokens: lexer.TokenList,
     index: usize = 0,
     tabs: usize = 0,
 
-    pub fn init(tokens: lexer.TokenList, allocator: std.mem.Allocator) Parser {
+    pub fn init(file_name: []const u8, src: []const u8, tokens: lexer.TokenList, allocator: std.mem.Allocator) Parser {
         return . {
+            .file_name = file_name,
+            .src = src,
             .allocator = allocator,
             .tokens = tokens,
         };
     }
 
-    fn getCurrent(self: *const Parser) ?lexer.Token {
+    fn getCurrent(self: *const Parser) ?lexer.PositionedToken {
         if (self.index >= self.tokens.items.len) return null;
         return self.tokens.items[self.index];
     }
 
-    fn peek(self: *const Parser, offset: usize) ?lexer.Token {
+    fn peek(self: *const Parser, offset: usize) ?lexer.PositionedToken {
         if (self.index + offset >= self.tokens.items.len) return null;
         return self.tokens.items[self.index + offset];
     }
 
-    fn expectCurrent(self: *const Parser) lexer.Token {
+    fn expectCurrent(self: *const Parser, expected: ?[]const u8) lexer.PositionedToken {
         if (self.getCurrent()) |token| {
             return token;
         } else {
-            std.log.err("Unexpected EOF {}!", .{self.index});
-            @panic("");
+            if (expected) |e| {
+                position.errorMessage("Unexpected EOF, should be '{s}'!", .{e}, self.file_name);
+            } else {
+                position.errorMessage("Unexpected EOF!", .{}, self.file_name);
+            }
         }
     }
 
     fn expectIdentifier(self: *const Parser) []const u8 {
-        switch (self.expectCurrent()) {
-            .Identifier => |id| return id,
-            else => {
-                std.log.err("Unexpected EOF!", .{});
-                @panic("");
+        if (self.getCurrent()) |token| {
+            switch (token.data) {
+                .Identifier => |id| return id,
+                else => {
+                    token.errorMessage("Unexpected token '{full}', should be 'Identifier'!", .{token.data}, self.src, self.file_name);
+                }
             }
+        } else {
+            position.errorMessage("Unexpected EOF, should be 'Identifier'!", .{}, self.file_name);
         }
     }
 
     fn expectExactKeyword(self: *const Parser, keyword: lexer.TokenKeyword) void {
-        if (!self.expectCurrent().isKeyword(keyword)) {
-            std.log.err("Unexpected Token, should be '{}'!", .{keyword});
-            @panic("");
+        if (self.getCurrent()) |token| {
+            if (!token.data.isKeyword(keyword)) {
+                token.errorMessage("Unexpected token '{full}', should be '{}'!", .{token.data, keyword}, self.src, self.file_name);
+            }
+        } else {
+            position.errorMessage("Unexpected EOF, should be '{}'!", .{keyword}, self.file_name);
         }
     }
 
     fn expectSymbol(self: *const Parser, symbol: lexer.TokenSymbol) void {
-        switch (self.expectCurrent()) {
-            .Symbol => |sym| {
-                if (sym != symbol) {
-                    std.log.err("Unexpected EOF!", .{});
-                    @panic("");
-                } 
-            },
-            else => {
-                std.log.err("Unexpected EOF!", .{});
-                @panic("");
+        if (self.getCurrent()) |token| {
+            if (!token.data.isSymbol(symbol)) {
+                token.errorMessage("Unexpected token '{full}', should be '{}'!", .{token.data, symbol}, self.src, self.file_name);
             }
+        } else {
+            position.errorMessage("Unexpected EOF, should be '{}'!", .{symbol}, self.file_name);
         }
     }
 
     fn expectString(self: *const Parser) []const u8 {
-        switch (self.expectCurrent()) {
-            .Constant => |constant| {
-                switch (constant) {
-                    .String => |str| return str,
-                    else => {
-                        std.log.err("Unexpected Token!", .{});
-                        @panic("");
+        if (self.getCurrent()) |token| {
+            switch (token.data) {
+                .Constant => |constant| {
+                    switch (constant) {
+                        .String => |str| return str,
+                        else => {
+                            token.errorMessage("Unexpected token '{full}', should be 'String'!", .{token.data}, self.src, self.file_name);
+                        }
                     }
+                },
+                else => {
+                    token.errorMessage("Unexpected token '{full}', should be 'String'!", .{token.data}, self.src, self.file_name);
                 }
-            },
-            else => {
-                std.log.err("Unexpected Token!", .{});
-                @panic("");
             }
+        } else {
+            position.errorMessage("Unexpected EOF, should be 'String'!", .{}, self.file_name);
         }
     }
 
@@ -596,8 +607,8 @@ pub const Parser = struct {
         self.expectSymbol(lexer.TokenSymbol.LeftParenthesis);
         self.advance();
         var parameters = FunctionDefinitionParameters.init(self.allocator);
-        var current = self.expectCurrent();
-        while (!current.isSymbol(lexer.TokenSymbol.RightParenthesis)) {
+        var current = self.expectCurrent(")");
+        while (!current.data.isSymbol(lexer.TokenSymbol.RightParenthesis)) {
             if (parameters.items.len != 0) {
                 self.expectSymbol(lexer.TokenSymbol.Comma);
                 self.advance();
@@ -612,22 +623,17 @@ pub const Parser = struct {
                 .name = param_name,
                 .data_type = param_type
             }) catch unreachable;
-            current = self.expectCurrent();
+            current = self.expectCurrent(")");
         }
         self.advance();
 
         var return_type: ?[]const u8 = null;
         if (self.getCurrent() != null) {
             current = self.getCurrent().?;
-            switch (current) {
-                .Symbol => |symbol| {
-                    if (symbol == lexer.TokenSymbol.Colon) {
-                        self.advance();
-                        return_type = self.expectIdentifier();
-                        self.advance();
-                    }
-                },
-                else => {}
+            if (current.data.isSymbol(lexer.TokenSymbol.Colon)) {
+                self.advance();
+                return_type = self.expectIdentifier();
+                self.advance();
             }
         }
         
@@ -635,17 +641,17 @@ pub const Parser = struct {
         var last_index = self.index;
         if (self.getCurrent() != null) {
             current = self.getCurrent().?;
-            if (current.isSymbol(lexer.TokenSymbol.RightDoubleArrow)) {
+            if (current.data.isSymbol(lexer.TokenSymbol.RightDoubleArrow)) {
                 self.advance();
                 self.tabs += 1;
                 var tab_count: usize = 0;
                 var first = true;
                 while (self.getCurrent() != null) {
                     current = self.getCurrent().?;
-                    if (current.isFormat(lexer.TokenFormat.Tab)) {
+                    if (current.data.isFormat(lexer.TokenFormat.Tab)) {
                         tab_count += 1;
                         self.advance();
-                    } if (current.isFormat(lexer.TokenFormat.NewLine)) {
+                    } if (current.data.isFormat(lexer.TokenFormat.NewLine)) {
                         tab_count = 0;
                         first = false;
                         self.advance();
@@ -674,8 +680,8 @@ pub const Parser = struct {
     }
 
     fn parseValue(self: *Parser) Node {
-        const current = self.expectCurrent();
-        switch (current) {
+        const current = self.expectCurrent("value");
+        switch (current.data) {
             .Constant => |constant| return self.handleConstant(constant),
             .Identifier => |id| return self.handleIdentifier(id),
             .Keyword => |keyword| {
@@ -690,8 +696,7 @@ pub const Parser = struct {
                         }
                     };
                 } else {
-                    std.log.err("Unexpected Token '{full}', should be expr!", .{current});
-                    @panic("");
+                    current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data}, self.src, self.file_name);
                 }
             },
             .Symbol => |symbol| {
@@ -721,13 +726,11 @@ pub const Parser = struct {
                         }
                     };
                 } else {
-                    std.log.err("Unexpected Token '{full}', should be expr!", .{current});
-                    @panic("");
+                    current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data}, self.src, self.file_name);
                 }
             },
             else => {
-                std.log.err("Unexpected Token '{full}', should be expr!", .{current});
-                @panic("");
+                current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data}, self.src, self.file_name);
             }
         }
     }
@@ -738,7 +741,7 @@ pub const Parser = struct {
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
-            if (current.isSymbol(lexer.TokenSymbol.Equal)) {
+            if (current.data.isSymbol(lexer.TokenSymbol.Equal)) {
                 operator = Operator.Assignment;
             } else {
                 break;
@@ -769,9 +772,9 @@ pub const Parser = struct {
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
-            if (current.isSymbol(lexer.TokenSymbol.Star)) {
+            if (current.data.isSymbol(lexer.TokenSymbol.Star)) {
                 operator = Operator.Multiply;
-            } else if (current.isSymbol(lexer.TokenSymbol.Slash)) {
+            } else if (current.data.isSymbol(lexer.TokenSymbol.Slash)) {
                 operator = Operator.Divide;
             } else {
                 break;
@@ -801,9 +804,9 @@ pub const Parser = struct {
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
-            if (current.isSymbol(lexer.TokenSymbol.Plus)) {
+            if (current.data.isSymbol(lexer.TokenSymbol.Plus)) {
                 operator = Operator.Add;
-            } else if (current.isSymbol(lexer.TokenSymbol.Dash)) {
+            } else if (current.data.isSymbol(lexer.TokenSymbol.Dash)) {
                 operator = Operator.Subtract;
             } else {
                 break;
@@ -833,17 +836,17 @@ pub const Parser = struct {
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
-            if (current.isSymbol(lexer.TokenSymbol.RightAngle)) {
+            if (current.data.isSymbol(lexer.TokenSymbol.RightAngle)) {
                 operator = Operator.Greater;
-            } else if (current.isSymbol(lexer.TokenSymbol.RightAngleEqual)) {
+            } else if (current.data.isSymbol(lexer.TokenSymbol.RightAngleEqual)) {
                 operator = Operator.GreaterOrEqual;
-            } else if (current.isSymbol(lexer.TokenSymbol.LeftAngle)) {
+            } else if (current.data.isSymbol(lexer.TokenSymbol.LeftAngle)) {
                 operator = Operator.Less;
-            } else if (current.isSymbol(lexer.TokenSymbol.LeftAngleEqual)) {
+            } else if (current.data.isSymbol(lexer.TokenSymbol.LeftAngleEqual)) {
                 operator = Operator.LessOrEqual;
-            } else if (current.isSymbol(lexer.TokenSymbol.DoubleEqual)) {
+            } else if (current.data.isSymbol(lexer.TokenSymbol.DoubleEqual)) {
                 operator = Operator.Equal;
-            } else if (current.isSymbol(lexer.TokenSymbol.ExclamationMarkEqual)) {
+            } else if (current.data.isSymbol(lexer.TokenSymbol.ExclamationMarkEqual)) {
                 operator = Operator.NotEqual;
             } else {
                 break;
@@ -873,9 +876,9 @@ pub const Parser = struct {
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
-            if (current.isKeyword(lexer.TokenKeyword.And)) {
+            if (current.data.isKeyword(lexer.TokenKeyword.And)) {
                 operator = Operator.And;
-            } else if (current.isKeyword(lexer.TokenKeyword.Or)) {
+            } else if (current.data.isKeyword(lexer.TokenKeyword.Or)) {
                 operator = Operator.Or;
             } else {
                 break;
@@ -939,15 +942,15 @@ pub const Parser = struct {
     fn parseFunctionCall(self: *Parser, id: []const u8) Node {
         self.advance();
         var parameters = NodeList.init(self.allocator);
-        var current = self.expectCurrent();
-        while (!current.isSymbol(lexer.TokenSymbol.RightParenthesis)) {
+        var current = self.expectCurrent(")");
+        while (!current.data.isSymbol(lexer.TokenSymbol.RightParenthesis)) {
             if (parameters.items.len != 0) {
                 self.expectSymbol(lexer.TokenSymbol.Comma);
                 self.advance();
             }
             const expr = self.parseExpr();
             parameters.append(expr) catch unreachable;
-            current = self.expectCurrent();
+            current = self.expectCurrent(")");
         }
         
         return Node {
@@ -960,7 +963,7 @@ pub const Parser = struct {
 
     fn handleIdentifier(self: *Parser, id: []const u8) Node {
         if (self.peek(1)) |next| {
-            if (next.isSymbol(lexer.TokenSymbol.LeftParenthesis)) {
+            if (next.data.isSymbol(lexer.TokenSymbol.LeftParenthesis)) {
                 self.advance();
                 return self.parseFunctionCall(id);
             }
@@ -990,7 +993,7 @@ pub const Parser = struct {
 
         var value: ?*Node = null;
         if (self.getCurrent()) |current| {
-            if (!current.isFormat(lexer.TokenFormat.NewLine)) {
+            if (!current.data.isFormat(lexer.TokenFormat.NewLine)) {
                 value = self.allocator.create(Node) catch unreachable;
                 value.?.* = self.parseExpr();
             }
@@ -1017,7 +1020,7 @@ pub const Parser = struct {
         var value: ?*Node = null;
         if (self.getCurrent() != null) {
             const current = self.getCurrent().?;
-            if (current.isSymbol(lexer.TokenSymbol.Equal)) {
+            if (current.data.isSymbol(lexer.TokenSymbol.Equal)) {
                 self.advance();
                 value = self.allocator.create(Node) catch unreachable;
                 value.?.* = self.parseExpr();
@@ -1048,15 +1051,15 @@ pub const Parser = struct {
             .Var => return self.parseVariableDefinition(false),
             .Not => return self.parseExpr(),
             else => {
-                std.log.err("Unexpected token '{full}'", .{self.getCurrent().?});
-                @panic("");
+                const current = self.getCurrent().?;
+                current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);
             }
         }
     }
 
     fn parseCurrent(self: *Parser) Node {
-        const current = self.expectCurrent();
-        switch (current) {
+        const current = self.expectCurrent(null);
+        switch (current.data) {
             .Constant, .Identifier => return self.parseExpr(),
             .Keyword => |keyword| return self.handleKeyword(keyword),
             .Format => {
@@ -1067,8 +1070,7 @@ pub const Parser = struct {
                 switch (symbol) {
                     .LeftParenthesis, .Plus, .Dash => return self.parseExpr(),
                     else => {
-                        std.log.err("Unexpected token '{full}'", .{current});
-                        @panic("");
+                        current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);
                     }
                 }
             }
@@ -1081,9 +1083,8 @@ pub const Parser = struct {
         while (self.getCurrent() != null) {
             nodes.append(self.parseCurrent()) catch unreachable;
             if (self.getCurrent()) |current| {
-                if (!current.isFormat(lexer.TokenFormat.NewLine)) {
-                    std.log.err("Unexpected Token '{}', should be NL", .{current});
-                    @panic("");
+                if (!current.data.isFormat(lexer.TokenFormat.NewLine)) {
+                    current.errorMessage("Unexpected token '{full}', should be 'NewLine'!", .{current.data}, self.src, self.file_name);
                 } 
                 self.advance();
             } 
