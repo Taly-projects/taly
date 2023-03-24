@@ -517,12 +517,12 @@ pub const Parser = struct {
 
     fn getCurrent(self: *const Parser) ?lexer.Token {
         if (self.index >= self.tokens.items.len) return null;
-        return self.tokens.items[self.index];
+        return self.tokens.items[self.index].data;
     }
 
     fn peek(self: *const Parser, offset: usize) ?lexer.Token {
         if (self.index + offset >= self.tokens.items.len) return null;
-        return self.tokens.items[self.index + offset];
+        return self.tokens.items[self.index + offset].data;
     }
 
     fn expectCurrent(self: *const Parser) lexer.Token {

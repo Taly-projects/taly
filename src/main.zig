@@ -52,7 +52,7 @@ pub fn main() !void {
     var src = try arena.allocator().alloc(u8, file_size);
     try file.reader().readNoEof(src);
 
-    var lex = lexer.Lexer.init(src);
+    var lex = lexer.Lexer.init(path, src);
     const tokens = lex.tokenize(arena.allocator());
 
     var par = parser.Parser.init(tokens, arena.allocator());

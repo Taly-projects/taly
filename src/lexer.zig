@@ -1,4 +1,5 @@
 const std = @import("std");
+const position = @import("position.zig");
 
 pub const TokenKeyword = enum {
     Fn,
@@ -225,16 +226,19 @@ pub const Token = union(TokenTag) {
     }
 };
 
-pub const TokenList = std.ArrayList(Token);
+pub const PositionedToken = position.Positioned(Token);
+pub const TokenList = std.ArrayList(PositionedToken);
 
 pub const Lexer = struct {
+    file_name: []const u8,
     src: []const u8,
-    index: usize,
+    pos: position.Position,
     
-    pub fn init(src: []const u8) Lexer {
+    pub fn init(file_name: []const u8, src: []const u8) Lexer {
         return . {
+            .file_name = file_name,
             .src = src,
-            .index = 0
+            .pos = .{}
         };
     }
 
@@ -243,7 +247,7 @@ pub const Lexer = struct {
     }
 
     fn peek(self: *const Lexer, offset: usize) u8 {
-        const index = self.index + offset;
+        const index = self.pos.index + offset;
         if (index >= self.src.len) {
             return 0;
         } else {
@@ -252,21 +256,29 @@ pub const Lexer = struct {
     }
 
     fn advance(self: *Lexer) void {
-        self.index += 1;
+        self.pos.advance(self.getCurrent());
     }
 
-    fn makeIdentifier(self: *Lexer, allocator: std.mem.Allocator) Token {
-        const start_index = self.index;
+    fn makeSingle(self: *Lexer, token: Token) PositionedToken {
+        const start = self.pos;
+        var end = self.pos;
+        end.advance(self.getCurrent());
+        return PositionedToken.init(token, start, end);
+    }
+
+    fn makeIdentifier(self: *Lexer, allocator: std.mem.Allocator) PositionedToken {
+        const start_pos = self.pos;
         var current = self.getCurrent();
         while (std.ascii.isAlphanumeric(current) or current == '_') {
             self.advance();
             current = self.getCurrent();
         }
+        const end_pos = self.pos;
 
-        const length = self.index - start_index;
+        const length = self.pos.index - start_pos.index;
         var array = allocator.alloc(u8, length) catch unreachable;
 
-        self.index = start_index;
+        self.pos = start_pos;
         var i: usize = 0;
         while (i < length) {
             array[i] = self.getCurrent();
@@ -275,56 +287,59 @@ pub const Lexer = struct {
         }
 
         if (TokenKeyword.isKeyword(array)) |keyword| {
-            return Token { 
+            return PositionedToken.init( Token { 
                 .Keyword = keyword
-            };
+            }, start_pos, end_pos);
         } else if (std.mem.eql(u8, array, "true")) {
-            return Token {
+            return PositionedToken.init( Token {
                 .Constant = .{
                     .Bool = true
                 }
-            };
+            }, start_pos, end_pos);
         } else if (std.mem.eql(u8, array, "false")) {
-            return Token {
+            return PositionedToken.init(Token {
                 .Constant = .{
                     .Bool = false
                 }
-            };
+            }, start_pos, end_pos);
         } else {
-            return Token {
+            return PositionedToken.init(Token {
                 .Identifier = array
-            };
+            }, start_pos, end_pos);
         }
     }
     
-    fn makeString(self: *Lexer, allocator: std.mem.Allocator) Token {
+    fn makeString(self: *Lexer, allocator: std.mem.Allocator) PositionedToken {
+        const start = self.pos;
         self.advance();
-        const start_index = self.index;
+        const start_pos = self.pos;
         var current = self.getCurrent();
         while (current != '"') {
             self.advance();
             current = self.getCurrent();
         }
-
-        const length = self.index - start_index;
+        const length = self.pos.index - start_pos.index;
         var array = allocator.alloc(u8, length) catch unreachable;
 
-        self.index = start_index;
+        self.advance();
+        const end = self.pos;
+
+        self.pos = start_pos;
         var i: usize = 0;
         while (i < length) : (i += 1) {
             array[i] = self.getCurrent();
             self.advance();
         }
 
-        return Token {
+        return PositionedToken.init(Token {
             .Constant = .{
                 .String = array
             }
-        };
+        }, start, end);
     } 
 
-    fn makeNumber(self: *Lexer, allocator: std.mem.Allocator) Token {
-        const start_index = self.index;
+    fn makeNumber(self: *Lexer, allocator: std.mem.Allocator) PositionedToken {
+        const start_pos = self.pos;
         var current = self.getCurrent();
         var length: usize = 0;
         var float = false;
@@ -337,10 +352,11 @@ pub const Lexer = struct {
                 float = true;
             }
         }
+        const end_pos = self.pos;
 
         var array = allocator.alloc(u8, length) catch unreachable;
 
-        self.index = start_index;
+        self.pos = start_pos;
         var i: usize = 0;
         while (i < length) {
             current = self.getCurrent();
@@ -352,17 +368,17 @@ pub const Lexer = struct {
         }
 
         if (float) {
-            return Token {
+            return PositionedToken.init(Token {
                 .Constant = . {
                     .Float = array
                 }
-            };
+            }, start_pos, end_pos);
         } else {
-            return Token {
+            return PositionedToken.init(Token {
                 .Constant = . {
                     .Int = array
                 }
-            };
+            }, start_pos, end_pos);
         }
     }
 
@@ -374,11 +390,15 @@ pub const Lexer = struct {
             current = self.getCurrent();
 
             var spaces: u8 = 0;
+            var start_pos = self.pos;
             while (current == ' ') {
                 spaces += 1;
                 
                 if (spaces == 4) {
-                    tokens.append(Token { .Format = .Tab }) catch unreachable; 
+                    var end_pos = self.pos;
+                    end_pos.advance(' ');
+                    tokens.append(PositionedToken.init(Token { .Format = .Tab }, start_pos, end_pos)) catch unreachable; 
+                    start_pos = end_pos;
                     spaces = 0;   
                 }
 
@@ -395,59 +415,74 @@ pub const Lexer = struct {
             } else {
                 switch (current) {
                     '"' => tokens.append(self.makeString(allocator)) catch unreachable,
-                    '(' => tokens.append(Token { .Symbol = .LeftParenthesis }) catch unreachable,
-                    ')' => tokens.append(Token { .Symbol = .RightParenthesis }) catch unreachable,
-                    ',' => tokens.append(Token { .Symbol = .Comma }) catch unreachable,
+                    '(' => tokens.append(self.makeSingle(Token { .Symbol = .LeftParenthesis })) catch unreachable,
+                    ')' => tokens.append(self.makeSingle(Token { .Symbol = .RightParenthesis })) catch unreachable,
+                    ',' => tokens.append(self.makeSingle(Token { .Symbol = .Comma })) catch unreachable,
                     '=' => {
                         const next = self.peek(1);
                         if (next == '>') {
+                            start_pos = self.pos;
                             self.advance();
-                            tokens.append(Token { .Symbol = .RightDoubleArrow }) catch unreachable;
+                            var end_pos = self.pos;
+                            end_pos.advance('>');
+                            tokens.append(PositionedToken.init(Token { .Symbol = .RightDoubleArrow }, start_pos, end_pos)) catch unreachable;
                         } else if (next == '=') {
+                            start_pos = self.pos;
                             self.advance();
-                            tokens.append(Token { .Symbol = .DoubleEqual }) catch unreachable;
+                            var end_pos = self.pos;
+                            end_pos.advance('=');
+                            tokens.append(PositionedToken.init(Token { .Symbol = .DoubleEqual }, start_pos, end_pos)) catch unreachable;
                         } else {
-                            tokens.append(Token { .Symbol = .Equal }) catch unreachable;
+                            tokens.append(self.makeSingle(Token { .Symbol = .Equal })) catch unreachable;
                         }
                     },
                     '>' => {
                         const next = self.peek(1);
                         if (next == '=') {
+                            start_pos = self.pos;
                             self.advance();
-                            tokens.append(Token { .Symbol = .RightAngleEqual }) catch unreachable;
+                            var end_pos = self.pos;
+                            end_pos.advance('=');
+                            tokens.append(PositionedToken.init(Token { .Symbol = .RightAngleEqual }, start_pos, end_pos)) catch unreachable;
                         } else {
-                            tokens.append(Token { .Symbol = .RightAngle }) catch unreachable;
+                            tokens.append(self.makeSingle(Token { .Symbol = .RightAngle })) catch unreachable;
                         }
                     },
                     '<' => {
                         const next = self.peek(1);
                         if (next == '=') {
+                            start_pos = self.pos;
                             self.advance();
-                            tokens.append(Token { .Symbol = .LeftAngleEqual }) catch unreachable;
+                            var end_pos = self.pos;
+                            end_pos.advance('=');
+                            tokens.append(PositionedToken.init(Token { .Symbol = .LeftAngleEqual }, start_pos, end_pos)) catch unreachable;
                         } else {
-                            tokens.append(Token { .Symbol = .LeftAngle }) catch unreachable;
+                            tokens.append(self.makeSingle(Token { .Symbol = .LeftAngle })) catch unreachable;
                         }
                     },
                     '!' => {
                         const next = self.peek(1);
                         if (next == '=') {
+                            start_pos = self.pos;
                             self.advance();
-                            tokens.append(Token { .Symbol = .ExclamationMarkEqual }) catch unreachable;
+                            var end_pos = self.pos;
+                            end_pos.advance('=');
+                            tokens.append(PositionedToken.init(Token { .Symbol = .ExclamationMarkEqual }, start_pos, end_pos)) catch unreachable;
                         } else {
-                            std.log.err("Unexpected char '!'", .{});
-                            @panic("");
+                            const positioned = self.makeSingle(Token { .Format = .NewLine });
+                            positioned.errorMessage("Unexpected char '{c}':", .{current}, self.src, self.file_name);
                         }
                     },
-                    ':' => tokens.append(Token { .Symbol = .Colon }) catch unreachable,
-                    '+' => tokens.append(Token { .Symbol = .Plus }) catch unreachable,
-                    '-' => tokens.append(Token { .Symbol = .Dash }) catch unreachable,
-                    '*' => tokens.append(Token { .Symbol = .Star }) catch unreachable,
-                    '/' => tokens.append(Token { .Symbol = .Slash }) catch unreachable,
+                    ':' => tokens.append(self.makeSingle(Token { .Symbol = .Colon })) catch unreachable,
+                    '+' => tokens.append(self.makeSingle(Token { .Symbol = .Plus })) catch unreachable,
+                    '-' => tokens.append(self.makeSingle(Token { .Symbol = .Dash })) catch unreachable,
+                    '*' => tokens.append(self.makeSingle(Token { .Symbol = .Star })) catch unreachable,
+                    '/' => tokens.append(self.makeSingle(Token { .Symbol = .Slash })) catch unreachable,
                     ' ', '\r' => {
                         // Ignored
                     },
-                    '\n' => tokens.append(Token { .Format = .NewLine}) catch unreachable,
-                    '\t' => tokens.append(Token { .Format = .Tab}) catch unreachable,
+                    '\n' => tokens.append(self.makeSingle(Token { .Format = .NewLine})) catch unreachable,
+                    '\t' => tokens.append(self.makeSingle(Token { .Format = .Tab})) catch unreachable,
                     '#' => {
                         self.advance();
                         current = self.getCurrent();
@@ -458,8 +493,8 @@ pub const Lexer = struct {
                     },
                     0 => break,
                     else => {
-                        std.log.err("Unexpected char '{c}'", .{current});
-                        @panic("");
+                        const positioned = self.makeSingle(Token { .Format = .NewLine });
+                        positioned.errorMessage("Unexpected char '{c}':", .{current}, self.src, self.file_name);
                     }
                 }
                 self.advance();
