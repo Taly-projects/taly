@@ -55,7 +55,7 @@ pub fn main() !void {
     var lex = lexer.Lexer.init(path, src);
     const tokens = lex.tokenize(arena.allocator());
 
-    var par = parser.Parser.init(tokens, arena.allocator());
+    var par = parser.Parser.init(path, src, tokens, arena.allocator());
     const ast = par.parse();
 
     // Generator

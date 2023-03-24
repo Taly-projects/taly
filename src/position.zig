@@ -77,7 +77,7 @@ pub fn Positioned(comptime T: type) type {
             }
         }  
 
-        pub fn errorMessage(self: *const Self, comptime msg: []const u8, args: anytype, src: []const u8, file_name: []const u8) void {
+        pub fn errorMessage(self: *const Self, comptime msg: []const u8, args: anytype, src: []const u8, file_name: []const u8) noreturn {
             const stdout = std.io.getStdOut();
             
             std.fmt.format(stdout.writer(), "\x1b[1m\x1b[38;2;255;81;81m{s}:{}:\x1b[0m ", .{file_name, self.start}) catch unreachable;
@@ -90,4 +90,15 @@ pub fn Positioned(comptime T: type) type {
             else std.os.exit(0);
         }
     };
+}
+
+pub fn errorMessage(comptime msg: []const u8, args: anytype, file_name: []const u8) noreturn {
+    const stdout = std.io.getStdOut();
+    
+    std.fmt.format(stdout.writer(), "\x1b[1m\x1b[38;2;255;81;81m{s}:\x1b[0m ", .{file_name}) catch unreachable;
+    std.fmt.format(stdout.writer(), msg, args) catch unreachable;
+    stdout.writeAll("\n") catch unreachable;
+
+    if (SHOULD_PANIC) @panic("")
+    else std.os.exit(0);
 }
