@@ -349,6 +349,77 @@ pub const UnaryOperationNode = struct {
     }
 };
 
+pub const IfBranch = struct {
+    condition: *Node,
+    body: NodeList,
+};
+pub const IfBranches = std.ArrayList(IfBranch);
+
+pub const IfNode = struct {
+    if_branch: IfBranch,
+    elif_branches: IfBranches,
+    else_body: NodeList,
+
+    pub fn writeC(self: *const IfNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("if (");
+        _ = try self.if_branch.condition.writeC(writer, 0);
+        try writer.writeAll(") {\n");
+        
+        for (self.if_branch.body.items) |node| {
+            if (try node.writeC(writer, tabs + 1)) {
+                try writer.writeAll(";");
+            }
+            try writer.writeAll("\n");
+        }
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        try writer.writeAll("}");
+        
+        for (self.elif_branches.items) |branch| {
+            try writer.writeAll(" else if (");
+            _ = try branch.condition.writeC(writer, 0);
+            try writer.writeAll(") {\n");
+            
+            for (branch.body.items) |node| {
+                if (try node.writeC(writer, tabs + 1)) {
+                    try writer.writeAll(";");
+                }
+                try writer.writeAll("\n");
+            }
+
+            // Add tabs
+            i = 0;
+            while (i < tabs) : (i += 1) try writer.writeAll("\t");
+            try writer.writeAll("}");
+        }
+
+        if (self.else_body.items.len != 0) {
+            try writer.writeAll(" else {\n");
+            
+            for (self.else_body.items) |node| {
+                if (try node.writeC(writer, tabs + 1)) {
+                    try writer.writeAll(";");
+                }
+                try writer.writeAll("\n");
+            }
+
+            // Add tabs
+            i = 0;
+            while (i < tabs) : (i += 1) try writer.writeAll("\t");
+            try writer.writeAll("}");
+        }
+        try writer.writeAll("\n");
+
+        return false;
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionHeader,
@@ -360,6 +431,7 @@ pub const NodeTag = enum {
     VariableCall,
     BinaryOperation,
     UnaryOperation,
+    If,
 };
 
 pub const Node = union(NodeTag) {
@@ -373,6 +445,7 @@ pub const Node = union(NodeTag) {
     VariableCall: VariableCallNode,
     BinaryOperation: BinaryOperationNode,
     UnaryOperation: UnaryOperationNode,
+    If: IfNode,
 
     pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -386,6 +459,7 @@ pub const Node = union(NodeTag) {
             .VariableCall => |node| return node.writeC(writer, tabs),
             .BinaryOperation => |node| return node.writeC(writer, tabs),
             .UnaryOperation => |node| return node.writeC(writer, tabs),
+            .If => |node| return node.writeC(writer, tabs),
         }
     }
 
@@ -692,6 +766,59 @@ pub const Translator = struct {
         return res;
     }
 
+    fn translateIfStatement(self: *Translator, if_node: parser.IfNode) NodeList {
+        var res = NodeList.init(self.allocator);
+
+        var condition = self.allocator.create(Node) catch unreachable;
+        var node_res = self.translateNode(if_node.if_branch.condition.*);
+        condition.* = node_res.source.pop();
+        res.appendSlice(node_res.source.items) catch unreachable;
+
+        var body = NodeList.init(self.allocator);
+        for (if_node.if_branch.body.items) |node| {
+            node_res = self.translateNode(node);
+            body.appendSlice(node_res.source.items) catch unreachable;
+        }
+
+        var elif_branches = IfBranches.init(self.allocator);
+        for (if_node.elif_branches.items) |branch| {
+            var elif_condition = self.allocator.create(Node) catch unreachable;
+            node_res = self.translateNode(branch.condition.*);
+            elif_condition.* = node_res.source.pop();
+            res.appendSlice(node_res.source.items) catch unreachable;
+
+            var elif_body = NodeList.init(self.allocator);
+            for (branch.body.items) |node| {
+                node_res = self.translateNode(node);
+                elif_body.appendSlice(node_res.source.items) catch unreachable;
+            }
+
+            elif_branches.append(IfBranch {
+                .condition = elif_condition,
+                .body = elif_body
+            }) catch unreachable;
+        }
+
+        var else_body = NodeList.init(self.allocator);
+        for (if_node.else_body.items) |node| {
+            node_res = self.translateNode(node);
+            else_body.appendSlice(node_res.source.items) catch unreachable;
+        }
+
+        res.append(Node {
+            .If = IfNode {
+                .if_branch = IfBranch {
+                    .condition = condition,
+                    .body = body
+                },
+                .elif_branches = elif_branches,
+                .else_body = else_body
+            }
+        }) catch unreachable;
+
+        return res;
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) File {
         var res = File.init("_", self.allocator);
         switch (node) {
@@ -708,6 +835,7 @@ pub const Translator = struct {
             .VariableCall => |var_call| res.append(&self.translateVariableCall(var_call)),
             .BinaryOperation => |bin_op| res.append(&self.translateBinaryOperation(bin_op)),
             .UnaryOperation => |bin_op| res.append(&self.translateUnaryOperation(bin_op)),
+            .If => |if_statement| res.source.appendSlice(self.translateIfStatement(if_statement).items) catch unreachable,
         }
         return res;
     }

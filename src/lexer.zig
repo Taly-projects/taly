@@ -11,6 +11,11 @@ pub const TokenKeyword = enum {
     And,
     Or,
     Not,
+    If,
+    Then,
+    Elif,
+    Else,
+    End,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         if (std.mem.eql(u8, data, "fn")) {
@@ -31,6 +36,16 @@ pub const TokenKeyword = enum {
             return TokenKeyword.Or;
         } else if (std.mem.eql(u8, data, "not")) {
             return TokenKeyword.Not;
+        } else if (std.mem.eql(u8, data, "if")) {
+            return TokenKeyword.If;
+        } else if (std.mem.eql(u8, data, "then")) {
+            return TokenKeyword.Then;
+        } else if (std.mem.eql(u8, data, "elif")) {
+            return TokenKeyword.Elif;
+        } else if (std.mem.eql(u8, data, "else")) {
+            return TokenKeyword.Else;
+        } else if (std.mem.eql(u8, data, "end")) {
+            return TokenKeyword.End;
         }
 
         return null;
@@ -50,6 +65,11 @@ pub const TokenKeyword = enum {
             .And => return std.fmt.format(writer, "and", .{}),
             .Or => return std.fmt.format(writer, "or", .{}),
             .Not => return std.fmt.format(writer, "not", .{}),
+            .If => return std.fmt.format(writer, "if", .{}),
+            .Then => return std.fmt.format(writer, "then", .{}),
+            .Elif => return std.fmt.format(writer, "elif", .{}),
+            .Else => return std.fmt.format(writer, "else", .{}),
+            .End => return std.fmt.format(writer, "end", .{}),
         }
     }
 };

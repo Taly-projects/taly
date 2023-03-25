@@ -446,6 +446,102 @@ pub const UnaryOperationNode = struct {
     }
 };
 
+pub const IfBranch = struct {
+    condition: *Node,
+    body: NodeList,
+
+    pub fn writeXML(self: *const IfBranch, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        
+        try writer.writeAll("<branch>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<condition>\n");
+
+        try self.condition.writeXML(writer, tabs + 2);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</condition>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<body>\n");
+
+        for (self.body.items) |node| {
+            try node.writeXML(writer, tabs + 2);
+        }
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</body>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</branch>\n");
+
+    }    
+};
+pub const IfBranchList = std.ArrayList(IfBranch);
+
+pub const IfNode = struct {
+    if_branch: IfBranch,
+    elif_branches: IfBranchList,
+    else_body: NodeList,
+
+    pub fn writeXML(self: *const IfNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        
+        try writer.writeAll("<if>\n");
+
+        try self.if_branch.writeXML(writer, tabs + 1);
+
+        for (self.elif_branches.items) |branch| {
+            try branch.writeXML(writer, tabs + 1);
+        } 
+
+        if (self.else_body.items.len != 0) {
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try writer.writeAll("<else>\n");
+
+            for (self.if_branch.body.items) |node| {
+                try node.writeXML(writer, tabs + 2);
+            }
+
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try writer.writeAll("</else>\n");
+        }
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</if>\n");
+
+    }    
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
@@ -456,6 +552,7 @@ pub const NodeTag = enum {
     VariableCall,
     BinaryOperation,
     UnaryOperation,
+    If,
 };
 
 pub const Node = union(NodeTag) {
@@ -468,6 +565,7 @@ pub const Node = union(NodeTag) {
     VariableCall: VariableCallNode,
     BinaryOperation: BinaryOperationNode,
     UnaryOperation: UnaryOperationNode,
+    If: IfNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -480,6 +578,7 @@ pub const Node = union(NodeTag) {
             .VariableCall => |node| return node.writeXML(writer, tabs),
             .BinaryOperation => |node| return node.writeXML(writer, tabs),
             .UnaryOperation => |node| return node.writeXML(writer, tabs),
+            .If => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -497,6 +596,7 @@ pub const Node = union(NodeTag) {
             .VariableCall => |node| node.writeXML(writer, 0) catch unreachable,
             .BinaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
             .UnaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
+            .If => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -593,6 +693,14 @@ pub const Parser = struct {
         } else {
             position.errorMessage("Unexpected EOF, should be 'String'!", .{}, self.file_name);
         }
+    }
+
+    fn expectEOS(self: *const Parser) void {
+        if (self.getCurrent()) |current| {
+            if (!current.data.isFormat(lexer.TokenFormat.NewLine)) {
+                current.errorMessage("Unexpected token '{full}', should be 'NewLine'!", .{current.data}, self.src, self.file_name);
+            } 
+        } 
     }
 
     fn advance(self: *Parser) void {
@@ -1037,6 +1145,78 @@ pub const Parser = struct {
         };
     }
 
+    fn parseIfStatement(self: *Parser) Node {
+        self.advance();
+        var if_condition = self.allocator.create(Node) catch unreachable;
+        if_condition.* = self.parseExpr();
+        self.expectExactKeyword(lexer.TokenKeyword.Then);
+        self.advance();
+
+        var if_body = NodeList.init(self.allocator);
+        var elif_branches = IfBranchList.init(self.allocator);
+        var else_body = NodeList.init(self.allocator);
+
+        const IfState = enum {
+            If,
+            Elif,
+            Else
+        };
+
+        var state = IfState.If;
+
+        var current = self.expectCurrent("end");
+        while (true) {
+            if (current.data.isFormat(lexer.TokenFormat.Tab) or current.data.isFormat(lexer.TokenFormat.NewLine)) {
+                self.advance();
+            } else if (current.data.isKeyword(lexer.TokenKeyword.End)) {
+                break;
+            } else if (current.data.isKeyword(lexer.TokenKeyword.Elif)) {
+                if (state == IfState.Else) {
+                    current.errorMessage("Unexpected elif branch after an else branch!", .{}, self.src, self.file_name);
+                }
+
+                self.advance();
+                var condition = self.allocator.create(Node) catch unreachable;
+                condition.* = self.parseExpr();
+                self.expectExactKeyword(lexer.TokenKeyword.Then);
+                self.advance();
+                
+                elif_branches.append(IfBranch {
+                    .condition = condition,
+                    .body = NodeList.init(self.allocator)
+                }) catch unreachable;
+
+                state = IfState.Elif;
+            } else if (current.data.isKeyword(lexer.TokenKeyword.Else)) {
+                self.advance();
+                state = IfState.Else;
+            } else {
+                const node = self.parseCurrent();
+                self.expectEOS();
+                self.advance();
+                switch (state) {
+                    .If => if_body.append(node) catch unreachable,
+                    .Elif => elif_branches.items[elif_branches.items.len - 1].body.append(node) catch unreachable,
+                    .Else => else_body.append(node) catch unreachable
+                }
+            }
+
+            current = self.expectCurrent("end");
+        }
+        self.advance();
+
+        return Node {
+            .If = IfNode {
+                .if_branch = IfBranch {
+                    .condition = if_condition,
+                    .body = if_body
+                },
+                .elif_branches = elif_branches,
+                .else_body = else_body
+            }
+        };
+    }
+
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         switch (keyword) {
             .Fn => return self.parseFunctionDefinition(false),
@@ -1050,6 +1230,7 @@ pub const Parser = struct {
             .Const => return self.parseVariableDefinition(true),
             .Var => return self.parseVariableDefinition(false),
             .Not => return self.parseExpr(),
+            .If => return self.parseIfStatement(),
             else => {
                 const current = self.getCurrent().?;
                 current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);
@@ -1082,12 +1263,8 @@ pub const Parser = struct {
 
         while (self.getCurrent() != null) {
             nodes.append(self.parseCurrent()) catch unreachable;
-            if (self.getCurrent()) |current| {
-                if (!current.data.isFormat(lexer.TokenFormat.NewLine)) {
-                    current.errorMessage("Unexpected token '{full}', should be 'NewLine'!", .{current.data}, self.src, self.file_name);
-                } 
-                self.advance();
-            } 
+            self.expectEOS();
+            self.advance();
         }
 
         return nodes;

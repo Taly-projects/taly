@@ -6,6 +6,10 @@ fn HELLO(): c_string => "Hello, world!\n"
 
 # main function
 fn main() =>
-    var x: c_int = not (true and false)
-    const msg: c_string = HELLO()
-    printf(msg)
+    if 5 > 3 then
+        printf(HELLO())
+    elif 3 > 9 then
+        printf("How?\n")
+    else
+        printf("None?\n")
+    end
