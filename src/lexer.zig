@@ -11,6 +11,16 @@ pub const TokenKeyword = enum {
     And,
     Or,
     Not,
+    If,
+    Then,
+    Elif,
+    Else,
+    End,
+    While,
+    Do,
+    Continue,
+    Break,
+    Match,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         if (std.mem.eql(u8, data, "fn")) {
@@ -31,6 +41,26 @@ pub const TokenKeyword = enum {
             return TokenKeyword.Or;
         } else if (std.mem.eql(u8, data, "not")) {
             return TokenKeyword.Not;
+        } else if (std.mem.eql(u8, data, "if")) {
+            return TokenKeyword.If;
+        } else if (std.mem.eql(u8, data, "then")) {
+            return TokenKeyword.Then;
+        } else if (std.mem.eql(u8, data, "elif")) {
+            return TokenKeyword.Elif;
+        } else if (std.mem.eql(u8, data, "else")) {
+            return TokenKeyword.Else;
+        } else if (std.mem.eql(u8, data, "end")) {
+            return TokenKeyword.End;
+        } else if (std.mem.eql(u8, data, "while")) {
+            return TokenKeyword.While;
+        } else if (std.mem.eql(u8, data, "do")) {
+            return TokenKeyword.Do;
+        } else if (std.mem.eql(u8, data, "continue")) {
+            return TokenKeyword.Continue;
+        } else if (std.mem.eql(u8, data, "break")) {
+            return TokenKeyword.Break;
+        } else if (std.mem.eql(u8, data, "match")) {
+            return TokenKeyword.Match;
         }
 
         return null;
@@ -50,6 +80,16 @@ pub const TokenKeyword = enum {
             .And => return std.fmt.format(writer, "and", .{}),
             .Or => return std.fmt.format(writer, "or", .{}),
             .Not => return std.fmt.format(writer, "not", .{}),
+            .If => return std.fmt.format(writer, "if", .{}),
+            .Then => return std.fmt.format(writer, "then", .{}),
+            .Elif => return std.fmt.format(writer, "elif", .{}),
+            .Else => return std.fmt.format(writer, "else", .{}),
+            .End => return std.fmt.format(writer, "end", .{}),
+            .While => return std.fmt.format(writer, "while", .{}),
+            .Do => return std.fmt.format(writer, "do", .{}),
+            .Continue => return std.fmt.format(writer, "continue", .{}),
+            .Break => return std.fmt.format(writer, "break", .{}),
+            .Match => return std.fmt.format(writer, "match", .{}),
         }
     }
 };
@@ -172,7 +212,8 @@ pub const TokenTag = enum {
     Keyword,
     Symbol,
     Constant,
-    Format
+    Format,
+    Label,
 };
 
 pub const Token = union(TokenTag) {
@@ -181,6 +222,7 @@ pub const Token = union(TokenTag) {
     Symbol: TokenSymbol,
     Constant: TokenConstant,
     Format: TokenFormat,
+    Label: []const u8,
 
     pub fn isSymbol(self: *const Token, symbol: TokenSymbol) bool {
         switch (self.*) {
@@ -213,6 +255,7 @@ pub const Token = union(TokenTag) {
                 .Symbol => |symbol| return std.fmt.format(writer, "Symbol({full})", .{symbol}),
                 .Constant => |constant| return std.fmt.format(writer, "Constant({})", .{constant}),
                 .Format => |fmt2| return std.fmt.format(writer, "Format({})", .{fmt2}),
+                .Label => |id| return std.fmt.format(writer, "Label({s})", .{id}),
             }
         } else {
             switch (self.*) {
@@ -220,7 +263,8 @@ pub const Token = union(TokenTag) {
                 .Keyword => |keyword| return std.fmt.format(writer, "{}", .{keyword}),
                 .Symbol => |symbol| return std.fmt.format(writer, "{}", .{symbol}),
                 .Constant => |constant| return std.fmt.format(writer, "{}", .{constant}),
-                .Format => |fmt2| return std.fmt.format(writer, "Format({})", .{fmt2}),
+                .Format => |fmt2| return std.fmt.format(writer, "{}", .{fmt2}),
+                .Label => |id| return std.fmt.format(writer, "${s}", .{id}),
             }
         }
     }
@@ -382,6 +426,33 @@ pub const Lexer = struct {
         }
     }
 
+    fn makeLabel(self: *Lexer, allocator: std.mem.Allocator) PositionedToken {
+        const start = self.pos;
+        self.advance();
+        const start_pos = self.pos;
+        var current = self.getCurrent();
+        while (std.ascii.isAlphanumeric(current) or current == '_') {
+            self.advance();
+            current = self.getCurrent();
+        }
+        const end_pos = self.pos;
+
+        const length = self.pos.index - start_pos.index;
+        var array = allocator.alloc(u8, length) catch unreachable;
+
+        self.pos = start_pos;
+        var i: usize = 0;
+        while (i < length) {
+            array[i] = self.getCurrent();
+            self.advance();
+            i += 1;
+        }
+
+        return PositionedToken.init(Token {
+            .Label = array
+        }, start, end_pos);
+    }
+
     pub fn tokenize(self: *Lexer, allocator: std.mem.Allocator) TokenList {
         var tokens = TokenList.init(allocator);
 
@@ -415,6 +486,10 @@ pub const Lexer = struct {
             } else {
                 switch (current) {
                     '"' => tokens.append(self.makeString(allocator)) catch unreachable,
+                    '$' => {
+                        tokens.append(self.makeLabel(allocator)) catch unreachable;
+                        continue;
+                    },
                     '(' => tokens.append(self.makeSingle(Token { .Symbol = .LeftParenthesis })) catch unreachable,
                     ')' => tokens.append(self.makeSingle(Token { .Symbol = .RightParenthesis })) catch unreachable,
                     ',' => tokens.append(self.makeSingle(Token { .Symbol = .Comma })) catch unreachable,

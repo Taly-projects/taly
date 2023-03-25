@@ -1,6 +1,6 @@
 const std = @import("std");
 
-var SHOULD_PANIC: bool = false;
+var SHOULD_PANIC: bool = true;
 
 pub const Position = struct {
     index: usize = 0,

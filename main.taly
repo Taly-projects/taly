@@ -1,11 +1,19 @@
 use "std-stdio"
 
-extern fn printf(msg: c_string) 
-
-fn HELLO(): c_string => "Hello, world!\n"
+extern fn printf(msg: c_string, num: c_int) 
 
 # main function
 fn main() =>
-    var x: c_int = not (true and false)
-    const msg: c_string = HELLO()
-    printf(msg)
+    var i: c_int = 0
+    while i < 10 do
+        match i
+            0 => printf("zero\n")
+            1 => printf("one\n")
+            2 => printf("two\n")
+            3 => printf("three\n")
+        else
+            printf("Something else\n")
+        end
+        printf("i: %d\n", i)
+        i = i + 1
+    end
