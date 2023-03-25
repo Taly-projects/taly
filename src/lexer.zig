@@ -16,6 +16,8 @@ pub const TokenKeyword = enum {
     Elif,
     Else,
     End,
+    While,
+    Do,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         if (std.mem.eql(u8, data, "fn")) {
@@ -46,6 +48,10 @@ pub const TokenKeyword = enum {
             return TokenKeyword.Else;
         } else if (std.mem.eql(u8, data, "end")) {
             return TokenKeyword.End;
+        } else if (std.mem.eql(u8, data, "while")) {
+            return TokenKeyword.While;
+        } else if (std.mem.eql(u8, data, "do")) {
+            return TokenKeyword.Do;
         }
 
         return null;
@@ -70,6 +76,8 @@ pub const TokenKeyword = enum {
             .Elif => return std.fmt.format(writer, "elif", .{}),
             .Else => return std.fmt.format(writer, "else", .{}),
             .End => return std.fmt.format(writer, "end", .{}),
+            .While => return std.fmt.format(writer, "while", .{}),
+            .Do => return std.fmt.format(writer, "do", .{}),
         }
     }
 };

@@ -1,15 +1,11 @@
 use "std-stdio"
 
-extern fn printf(msg: c_string) 
-
-fn HELLO(): c_string => "Hello, world!\n"
+extern fn printf(msg: c_string, num: c_int) 
 
 # main function
 fn main() =>
-    if 5 > 3 then
-        printf(HELLO())
-    elif 3 > 9 then
-        printf("How?\n")
-    else
-        printf("None?\n")
+    var i: c_int = 0
+    while i < 10 do
+        printf("i: %d\n", i)
+        i = i + 1
     end

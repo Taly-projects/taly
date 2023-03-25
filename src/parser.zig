@@ -542,6 +542,56 @@ pub const IfNode = struct {
     }    
 };
 
+pub const WhileNode = struct {
+    condition: *Node,
+    body: NodeList,
+
+    pub fn writeXML(self: *const WhileNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        
+        try writer.writeAll("<while>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<condition>\n");
+
+        try self.condition.writeXML(writer, tabs + 2);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</condition>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<body>\n");
+
+        for (self.body.items) |node| {
+            try node.writeXML(writer, tabs + 2);
+        }
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</body>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</while>\n");
+
+    }    
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
@@ -553,6 +603,7 @@ pub const NodeTag = enum {
     BinaryOperation,
     UnaryOperation,
     If,
+    While,
 };
 
 pub const Node = union(NodeTag) {
@@ -566,6 +617,7 @@ pub const Node = union(NodeTag) {
     BinaryOperation: BinaryOperationNode,
     UnaryOperation: UnaryOperationNode,
     If: IfNode,
+    While: WhileNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -579,12 +631,15 @@ pub const Node = union(NodeTag) {
             .BinaryOperation => |node| return node.writeXML(writer, tabs),
             .UnaryOperation => |node| return node.writeXML(writer, tabs),
             .If => |node| return node.writeXML(writer, tabs),
+            .While => |node| return node.writeXML(writer, tabs),
         }
     }
 
     pub fn format(self: *const Node, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         _ = options;
         _ = fmt;
+
+        // self.writeXML(writer, 0);
 
         switch (self.*) {
             .Value => |node| node.writeXML(writer, 0) catch unreachable,
@@ -597,6 +652,7 @@ pub const Node = union(NodeTag) {
             .BinaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
             .UnaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
             .If => |node| node.writeXML(writer, 0) catch unreachable,
+            .While => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -1217,6 +1273,34 @@ pub const Parser = struct {
         };
     }
 
+    fn parseWhileLoop(self: *Parser) Node {
+        self.advance();
+        var condition = self.allocator.create(Node) catch unreachable;
+        condition.* = self.parseExpr();
+        self.expectExactKeyword(lexer.TokenKeyword.Do);
+        self.advance();
+
+        var body = NodeList.init(self.allocator);
+        var current = self.expectCurrent("end");
+        while (!current.data.isKeyword(lexer.TokenKeyword.End)) {
+            if (current.data.isFormat(lexer.TokenFormat.Tab) or current.data.isFormat(lexer.TokenFormat.NewLine)) {
+                self.advance();
+                current = self.expectCurrent("end");
+            } else {
+                body.append(self.parseCurrent()) catch unreachable;
+                current = self.expectCurrent("end");
+            }
+        }
+        self.advance();
+
+        return Node {
+            .While = WhileNode {
+                .condition = condition,
+                .body = body
+            }
+        };
+    }
+
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         switch (keyword) {
             .Fn => return self.parseFunctionDefinition(false),
@@ -1231,6 +1315,7 @@ pub const Parser = struct {
             .Var => return self.parseVariableDefinition(false),
             .Not => return self.parseExpr(),
             .If => return self.parseIfStatement(),
+            .While => return self.parseWhileLoop(),
             else => {
                 const current = self.getCurrent().?;
                 current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);

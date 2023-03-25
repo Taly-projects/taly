@@ -420,6 +420,34 @@ pub const IfNode = struct {
     }
 };
 
+pub const WhileNode = struct {
+    condition: *Node,
+    body: NodeList,
+
+    pub fn writeC(self: *const WhileNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("while (");
+        _ = try self.condition.writeC(writer, 0);
+        try writer.writeAll(") {\n");
+        
+        for (self.body.items) |node| {
+            if (try node.writeC(writer, tabs + 1)) {
+                try writer.writeAll(";");
+            }
+            try writer.writeAll("\n");
+        }
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        try writer.writeAll("}\n");
+
+        return false;
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionHeader,
@@ -432,6 +460,7 @@ pub const NodeTag = enum {
     BinaryOperation,
     UnaryOperation,
     If,
+    While,
 };
 
 pub const Node = union(NodeTag) {
@@ -446,6 +475,7 @@ pub const Node = union(NodeTag) {
     BinaryOperation: BinaryOperationNode,
     UnaryOperation: UnaryOperationNode,
     If: IfNode,
+    While: WhileNode,
 
     pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -460,6 +490,7 @@ pub const Node = union(NodeTag) {
             .BinaryOperation => |node| return node.writeC(writer, tabs),
             .UnaryOperation => |node| return node.writeC(writer, tabs),
             .If => |node| return node.writeC(writer, tabs),
+            .While => |node| return node.writeC(writer, tabs),
         }
     }
 
@@ -841,6 +872,30 @@ pub const Translator = struct {
         return nodes;
     }
 
+    fn translateWhileLoop(self: *Translator, while_node: parser.WhileNode) NodeList {
+        var nodes = NodeList.init(self.allocator);
+
+        var condition = self.allocator.create(Node) catch unreachable;
+        var node_res = self.translateNode(while_node.condition.*);
+        condition.* = node_res.pop();
+        nodes.appendSlice(node_res.items) catch unreachable;
+
+        var body = NodeList.init(self.allocator);
+        for (while_node.body.items) |node| {
+            node_res = self.translateNode(node);
+            body.appendSlice(node_res.items) catch unreachable;
+        }
+
+        nodes.append(Node {
+            .While = WhileNode {
+                .condition = condition,
+                .body = body
+            }
+        }) catch unreachable;
+
+        return nodes;
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
         switch (node) {
@@ -854,6 +909,7 @@ pub const Translator = struct {
             .BinaryOperation => |bin_op| nodes.appendSlice(self.translateBinaryOperation(bin_op).items) catch unreachable,
             .UnaryOperation => |bin_op| nodes.appendSlice(self.translateUnaryOperation(bin_op).items) catch unreachable,
             .If => |if_statement| nodes.appendSlice(self.translateIfStatement(if_statement).items) catch unreachable,
+            .While => |while_loop| nodes.appendSlice(self.translateWhileLoop(while_loop).items) catch unreachable,
         }
         return nodes;
     }
