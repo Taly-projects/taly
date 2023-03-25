@@ -200,7 +200,8 @@ pub const TokenTag = enum {
     Keyword,
     Symbol,
     Constant,
-    Format
+    Format,
+    Label,
 };
 
 pub const Token = union(TokenTag) {
@@ -209,6 +210,7 @@ pub const Token = union(TokenTag) {
     Symbol: TokenSymbol,
     Constant: TokenConstant,
     Format: TokenFormat,
+    Label: []const u8,
 
     pub fn isSymbol(self: *const Token, symbol: TokenSymbol) bool {
         switch (self.*) {
@@ -241,6 +243,7 @@ pub const Token = union(TokenTag) {
                 .Symbol => |symbol| return std.fmt.format(writer, "Symbol({full})", .{symbol}),
                 .Constant => |constant| return std.fmt.format(writer, "Constant({})", .{constant}),
                 .Format => |fmt2| return std.fmt.format(writer, "Format({})", .{fmt2}),
+                .Label => |id| return std.fmt.format(writer, "Label({s})", .{id}),
             }
         } else {
             switch (self.*) {
@@ -248,7 +251,8 @@ pub const Token = union(TokenTag) {
                 .Keyword => |keyword| return std.fmt.format(writer, "{}", .{keyword}),
                 .Symbol => |symbol| return std.fmt.format(writer, "{}", .{symbol}),
                 .Constant => |constant| return std.fmt.format(writer, "{}", .{constant}),
-                .Format => |fmt2| return std.fmt.format(writer, "Format({})", .{fmt2}),
+                .Format => |fmt2| return std.fmt.format(writer, "{}", .{fmt2}),
+                .Label => |id| return std.fmt.format(writer, "${s}", .{id}),
             }
         }
     }
@@ -410,6 +414,33 @@ pub const Lexer = struct {
         }
     }
 
+    fn makeLabel(self: *Lexer, allocator: std.mem.Allocator) PositionedToken {
+        const start = self.pos;
+        self.advance();
+        const start_pos = self.pos;
+        var current = self.getCurrent();
+        while (std.ascii.isAlphanumeric(current) or current == '_') {
+            self.advance();
+            current = self.getCurrent();
+        }
+        const end_pos = self.pos;
+
+        const length = self.pos.index - start_pos.index;
+        var array = allocator.alloc(u8, length) catch unreachable;
+
+        self.pos = start_pos;
+        var i: usize = 0;
+        while (i < length) {
+            array[i] = self.getCurrent();
+            self.advance();
+            i += 1;
+        }
+
+        return PositionedToken.init(Token {
+            .Label = array
+        }, start, end_pos);
+    }
+
     pub fn tokenize(self: *Lexer, allocator: std.mem.Allocator) TokenList {
         var tokens = TokenList.init(allocator);
 
@@ -443,6 +474,10 @@ pub const Lexer = struct {
             } else {
                 switch (current) {
                     '"' => tokens.append(self.makeString(allocator)) catch unreachable,
+                    '$' => {
+                        tokens.append(self.makeLabel(allocator)) catch unreachable;
+                        continue;
+                    },
                     '(' => tokens.append(self.makeSingle(Token { .Symbol = .LeftParenthesis })) catch unreachable,
                     ')' => tokens.append(self.makeSingle(Token { .Symbol = .RightParenthesis })) catch unreachable,
                     ',' => tokens.append(self.makeSingle(Token { .Symbol = .Comma })) catch unreachable,

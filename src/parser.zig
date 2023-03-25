@@ -592,6 +592,19 @@ pub const WhileNode = struct {
     }    
 };
 
+pub const LabelNode = struct {
+    label: []const u8,
+
+    pub fn writeXML(self: *const LabelNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        
+        try std.fmt.format(writer, "<label>{s}</label>\n", .{self.label});
+    }    
+
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
@@ -604,6 +617,7 @@ pub const NodeTag = enum {
     UnaryOperation,
     If,
     While,
+    Label,
 };
 
 pub const Node = union(NodeTag) {
@@ -618,6 +632,7 @@ pub const Node = union(NodeTag) {
     UnaryOperation: UnaryOperationNode,
     If: IfNode,
     While: WhileNode,
+    Label: LabelNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -632,6 +647,7 @@ pub const Node = union(NodeTag) {
             .UnaryOperation => |node| return node.writeXML(writer, tabs),
             .If => |node| return node.writeXML(writer, tabs),
             .While => |node| return node.writeXML(writer, tabs),
+            .Label => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -653,6 +669,7 @@ pub const Node = union(NodeTag) {
             .UnaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
             .If => |node| node.writeXML(writer, 0) catch unreachable,
             .While => |node| node.writeXML(writer, 0) catch unreachable,
+            .Label => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -1323,6 +1340,17 @@ pub const Parser = struct {
         }
     }
 
+    fn parseLabel(self: *Parser, id: []const u8) Node {
+        self.advance();
+        self.expectSymbol(lexer.TokenSymbol.Colon);
+        self.advance();
+        return Node {
+            .Label = LabelNode {
+                .label = id
+            }
+        };
+    }
+
     fn parseCurrent(self: *Parser) Node {
         const current = self.expectCurrent(null);
         switch (current.data) {
@@ -1339,7 +1367,8 @@ pub const Parser = struct {
                         current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);
                     }
                 }
-            }
+            },
+            .Label => |id| return self.parseLabel(id),
         }
     }
 

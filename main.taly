@@ -5,7 +5,7 @@ extern fn printf(msg: c_string, num: c_int)
 # main function
 fn main() =>
     var i: c_int = 0
-    while i < 10 do
+    $A: while i < 10 do
         printf("i: %d\n", i)
         i = i + 1
     end

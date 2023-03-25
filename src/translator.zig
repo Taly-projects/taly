@@ -448,6 +448,20 @@ pub const WhileNode = struct {
     }
 };
 
+pub const LabelNode = struct {
+    label: []const u8,
+
+    pub fn writeC(self: *const LabelNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "{s}: ", .{self.label});
+
+        return true;
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionHeader,
@@ -461,6 +475,7 @@ pub const NodeTag = enum {
     UnaryOperation,
     If,
     While,
+    Label,
 };
 
 pub const Node = union(NodeTag) {
@@ -476,6 +491,7 @@ pub const Node = union(NodeTag) {
     UnaryOperation: UnaryOperationNode,
     If: IfNode,
     While: WhileNode,
+    Label: LabelNode,
 
     pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -491,6 +507,7 @@ pub const Node = union(NodeTag) {
             .UnaryOperation => |node| return node.writeC(writer, tabs),
             .If => |node| return node.writeC(writer, tabs),
             .While => |node| return node.writeC(writer, tabs),
+            .Label => |node| return node.writeC(writer, tabs),
         }
     }
 
@@ -896,6 +913,15 @@ pub const Translator = struct {
         return nodes;
     }
 
+    fn translateLabel(self: *Translator, label: parser.LabelNode) Node {
+        _ = self;
+        return Node {
+            .Label = LabelNode {
+                .label = label.label
+            }
+        };
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
         switch (node) {
@@ -910,6 +936,7 @@ pub const Translator = struct {
             .UnaryOperation => |bin_op| nodes.appendSlice(self.translateUnaryOperation(bin_op).items) catch unreachable,
             .If => |if_statement| nodes.appendSlice(self.translateIfStatement(if_statement).items) catch unreachable,
             .While => |while_loop| nodes.appendSlice(self.translateWhileLoop(while_loop).items) catch unreachable,
+            .Label => |label| nodes.append(self.translateLabel(label)) catch unreachable,
         }
         return nodes;
     }
