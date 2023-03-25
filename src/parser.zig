@@ -605,6 +605,40 @@ pub const LabelNode = struct {
 
 };
 
+pub const ContinueNode = struct {
+    label: ?[]const u8,
+
+    pub fn writeXML(self: *const ContinueNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<continue>");
+        if (self.label) |label| {
+            try std.fmt.format(writer, "{s}", .{label});
+        }
+        try writer.writeAll("</continue>\n");
+    }    
+
+};
+
+pub const BreakNode = struct {
+    label: ?[]const u8,
+
+    pub fn writeXML(self: *const BreakNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<continue>");
+        if (self.label) |label| {
+            try std.fmt.format(writer, "{s}", .{label});
+        }
+        try writer.writeAll("</continue>\n");
+    }    
+
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
@@ -618,6 +652,8 @@ pub const NodeTag = enum {
     If,
     While,
     Label,
+    Continue,
+    Break,
 };
 
 pub const Node = union(NodeTag) {
@@ -633,6 +669,8 @@ pub const Node = union(NodeTag) {
     If: IfNode,
     While: WhileNode,
     Label: LabelNode,
+    Continue: ContinueNode,
+    Break: BreakNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -648,6 +686,8 @@ pub const Node = union(NodeTag) {
             .If => |node| return node.writeXML(writer, tabs),
             .While => |node| return node.writeXML(writer, tabs),
             .Label => |node| return node.writeXML(writer, tabs),
+            .Continue => |node| return node.writeXML(writer, tabs),
+            .Break => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -670,6 +710,8 @@ pub const Node = union(NodeTag) {
             .If => |node| node.writeXML(writer, 0) catch unreachable,
             .While => |node| node.writeXML(writer, 0) catch unreachable,
             .Label => |node| node.writeXML(writer, 0) catch unreachable,
+            .Continue => |node| node.writeXML(writer, 0) catch unreachable,
+            .Break => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -1265,7 +1307,7 @@ pub const Parser = struct {
                 state = IfState.Else;
             } else {
                 const node = self.parseCurrent();
-                self.expectEOS();
+                // self.expectEOS();
                 self.advance();
                 switch (state) {
                     .If => if_body.append(node) catch unreachable,
@@ -1318,6 +1360,46 @@ pub const Parser = struct {
         };
     }
 
+    fn parseContinue(self: *Parser) Node {
+        self.advance();
+        var label: ?[]const u8 = null;
+        if (self.getCurrent()) |token| {
+            switch (token.data) {
+                .Label => |lbl| {
+                    label = lbl;
+                    self.advance();
+                },
+                else => {}
+            }
+        }
+
+        return Node {
+            .Continue = ContinueNode {
+                .label = label
+            }
+        };
+    }
+
+    fn parseBreak(self: *Parser) Node {
+        self.advance();
+        var label: ?[]const u8 = null;
+        if (self.getCurrent()) |token| {
+            switch (token.data) {
+                .Label => |lbl| {
+                    label = lbl;
+                    self.advance();
+                },
+                else => {}
+            }
+        }
+
+        return Node {
+            .Break = BreakNode {
+                .label = label
+            }
+        };
+    }
+
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         switch (keyword) {
             .Fn => return self.parseFunctionDefinition(false),
@@ -1333,6 +1415,8 @@ pub const Parser = struct {
             .Not => return self.parseExpr(),
             .If => return self.parseIfStatement(),
             .While => return self.parseWhileLoop(),
+            .Continue => return self.parseContinue(),
+            .Break => return self.parseBreak(),
             else => {
                 const current = self.getCurrent().?;
                 current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);

@@ -462,6 +462,42 @@ pub const LabelNode = struct {
     }
 };
 
+pub const ContinueNode = struct {
+    label: ?[]const u8,
+
+    pub fn writeC(self: *const ContinueNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("continue");
+
+        if (self.label) |label| {
+            try std.fmt.format(writer, " {s}", .{label});
+        }
+
+        return true;
+    }
+};
+
+pub const BreakNode = struct {
+    label: ?[]const u8,
+
+    pub fn writeC(self: *const BreakNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("break");
+
+        if (self.label) |label| {
+            try std.fmt.format(writer, " {s}", .{label});
+        }
+
+        return true;
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionHeader,
@@ -476,6 +512,8 @@ pub const NodeTag = enum {
     If,
     While,
     Label,
+    Continue,
+    Break,
 };
 
 pub const Node = union(NodeTag) {
@@ -492,6 +530,8 @@ pub const Node = union(NodeTag) {
     If: IfNode,
     While: WhileNode,
     Label: LabelNode,
+    Continue: ContinueNode,
+    Break: BreakNode,
 
     pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -508,6 +548,8 @@ pub const Node = union(NodeTag) {
             .If => |node| return node.writeC(writer, tabs),
             .While => |node| return node.writeC(writer, tabs),
             .Label => |node| return node.writeC(writer, tabs),
+            .Continue => |node| return node.writeC(writer, tabs),
+            .Break => |node| return node.writeC(writer, tabs),
         }
     }
 
@@ -922,6 +964,24 @@ pub const Translator = struct {
         };
     }
 
+    fn translateContinue(self: *Translator, ctn: parser.ContinueNode) Node {
+        _ = self;
+        return Node {
+            .Continue = ContinueNode {
+                .label = ctn.label
+            }
+        };
+    }
+
+    fn translateBreak(self: *Translator, brk: parser.BreakNode) Node {
+        _ = self;
+        return Node {
+            .Break = BreakNode {
+                .label = brk.label
+            }
+        };
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
         switch (node) {
@@ -937,6 +997,8 @@ pub const Translator = struct {
             .If => |if_statement| nodes.appendSlice(self.translateIfStatement(if_statement).items) catch unreachable,
             .While => |while_loop| nodes.appendSlice(self.translateWhileLoop(while_loop).items) catch unreachable,
             .Label => |label| nodes.append(self.translateLabel(label)) catch unreachable,
+            .Continue => |label| nodes.append(self.translateContinue(label)) catch unreachable,
+            .Break => |label| nodes.append(self.translateBreak(label)) catch unreachable,
         }
         return nodes;
     }

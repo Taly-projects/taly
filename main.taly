@@ -6,6 +6,10 @@ extern fn printf(msg: c_string, num: c_int)
 fn main() =>
     var i: c_int = 0
     $A: while i < 10 do
+        if i == 2 then
+            i = i + 1
+            continue
+        end
         printf("i: %d\n", i)
         i = i + 1
     end
