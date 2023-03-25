@@ -527,11 +527,13 @@ pub const Translator = struct {
     allocator: std.mem.Allocator,
     ast: parser.NodeList,
     index: usize = 0,
+    header: NodeList,
 
     pub fn init(ast: parser.NodeList, allocator: std.mem.Allocator) Translator {
         return . {
             .allocator = allocator,
-            .ast = ast
+            .ast = ast,
+            .header = NodeList.init(allocator),
         };
     }
 
@@ -564,11 +566,13 @@ pub const Translator = struct {
         }
     }
 
-    fn translateFunctionDefinition(self: *Translator, function_def: parser.FunctionDefinitionNode) File {
-        var file = File.init("_", self.allocator);
+    fn translateFunctionDefinition(self: *Translator, function_def: parser.FunctionDefinitionNode) NodeList {
+        var nodes = NodeList.init(self.allocator);
 
-        if (function_def.external) return file;
+        // External functions nothing to do (only used to tell the compiler a function exists)..
+        if (function_def.external) return nodes;
 
+        // Translate parameters
         var parameters = FunctionDefinitionParameters.init(self.allocator);
         for (function_def.parameters.items) |param| {
             parameters.append(FunctionDefinitionParameter {
@@ -577,8 +581,9 @@ pub const Translator = struct {
             }) catch unreachable;
         }
 
+        // Generate header (if not main)
         if (!std.mem.eql(u8, function_def.name, "main")) {
-            file.header.append(Node {
+            self.header.append(Node {
                 .FunctionHeader = .{
                     .name = function_def.name,
                     .parameters = parameters,
@@ -587,14 +592,14 @@ pub const Translator = struct {
             }) catch unreachable; 
         }
 
+        // Translate body
         var body = NodeList.init(self.allocator);
         for (function_def.body.items) |node| {
-            const res = self.translateNode(node);
-            body.appendSlice(res.source.items) catch unreachable;
-            file.header.appendSlice(res.header.items) catch unreachable;
+            body.appendSlice(self.translateNode(node).items) catch unreachable;
         }
 
-        file.source.append(Node {
+        // Create translated node
+        nodes.append(Node {
             .FunctionSource = .{
                 .name = function_def.name,
                 .parameters = parameters,
@@ -603,78 +608,87 @@ pub const Translator = struct {
             }
         }) catch unreachable; 
 
-        return file;
+        return nodes;
     }
 
-    fn translateFunctionCall(self: *Translator, function_call: parser.FunctionCallNode) Node {
+    fn translateFunctionCall(self: *Translator, function_call: parser.FunctionCallNode) NodeList {
+        var nodes = NodeList.init(self.allocator);
+        // Translate Parameters
         var parameters = NodeList.init(self.allocator);
         for (function_call.parameters.items) |param| {
-            // Header ignore (there should be nothing in it)
-            parameters.appendSlice(self.translateNode(param).source.items) catch unreachable;
+            var res = self.translateNode(param);
+            parameters.append(res.pop()) catch unreachable;
+            nodes.appendSlice(res.items) catch unreachable;
         }
 
-        return Node {
+        // Create translated node
+        nodes.append(Node {
             .FunctionCall = . {
                 .name = function_call.name,
                 .parameters = parameters
             }
-        };
+        }) catch unreachable;
+
+        return nodes;
     }
 
-    fn translateUse(self: *Translator, use: parser.UseNode) ?Node {
-        _ = self;
+    fn translateUse(self: *Translator, use: parser.UseNode) void {
         if (std.mem.startsWith(u8, use.path, "std-")) {
-            return Node {
+            self.header.append(Node {
                 .Include = .{
                     .std = true,
                     .path = use.path[4..]
                 }
-            };
+            }) catch unreachable;
         } else if (std.mem.startsWith(u8, use.path, "c-")) {
-            return Node {
+            self.header.append(Node {
                 .Include = .{
                     .std = false,
                     .path = use.path[2..]
                 }
-            };
+            }) catch unreachable;
         } 
-
-        return null;
     }
 
-    fn translateReturn(self: *Translator, return_node: parser.ReturnNode) File {
-        var res = File.init("_", self.allocator);
+    fn translateReturn(self: *Translator, return_node: parser.ReturnNode) NodeList {
+        var nodes = NodeList.init(self.allocator);
+
+        // Translate value (if present)
         var new_value: ?*Node = null;
         if (return_node.value) |value| {
             new_value = self.allocator.create(Node) catch unreachable;
-            var node_res = self.translateNode(value.*);
-            new_value.?.* = node_res.source.pop();
-            res.append(&node_res);
+            var res = self.translateNode(value.*);
+            new_value.?.* = res.pop();
+            nodes.appendSlice(res.items) catch unreachable;
         }
 
-        res.source.append(Node {
+        // Create translated node
+        nodes.append(Node {
             .Return = . {
                 .value = new_value
             }
         }) catch unreachable;
 
-        return res;
+        return nodes;
     }
 
-    fn translateVariableDefinition(self: *Translator, node: parser.VariableDefinitionNode) File {
-        var res = File.init("_", self.allocator);
+    fn translateVariableDefinition(self: *Translator, node: parser.VariableDefinitionNode) NodeList {
+        var nodes = NodeList.init(self.allocator);
         
+        // Translate type
         const new_data_type = self.translateType(node.data_type);
 
+        // Translate value (if present)
         var new_value: ?*Node = null;
         if (node.value) |value| {
             new_value = self.allocator.create(Node) catch unreachable;
-            var value_res = self.translateNode(value.*);
-            new_value.?.* = value_res.source.pop();
-            res.append(&value_res);
+            var res = self.translateNode(value.*);
+            new_value.?.* = res.pop();
+            nodes.appendSlice(res.items) catch unreachable;
         }
 
-        res.source.append(Node {
+        // Create translated node
+        nodes.append(Node {
             .VariableDefinition = .{
                 .constant = node.constant,
                 .name = node.name,
@@ -683,34 +697,38 @@ pub const Translator = struct {
             }
         }) catch unreachable;
 
-        return res;
+        return nodes;
     }
 
-    fn translateVariableCall(self: *Translator, node: parser.VariableCallNode) File {
-        var res = File.init("_", self.allocator);
+    fn translateVariableCall(self: *Translator, node: parser.VariableCallNode) NodeList {
+        var nodes = NodeList.init(self.allocator);
 
-        res.source.append(Node {
+        // Create translated node
+        nodes.append(Node {
             .VariableCall = .{ 
                 .name = node.name
             }
         }) catch unreachable;
 
-        return res;
+        return nodes;
     }
 
-    fn translateBinaryOperation(self: *Translator, bin_op: parser.BinaryOperationNode) File {
-        var res = File.init("_", self.allocator);
+    fn translateBinaryOperation(self: *Translator, bin_op: parser.BinaryOperationNode) NodeList {
+        var nodes = NodeList.init(self.allocator);
 
+        // Translate LHS
         var lhs_res = self.translateNode(bin_op.lhs.*);
         var lhs_node = self.allocator.create(Node) catch unreachable;
-        lhs_node.* = lhs_res.source.pop();
-        res.append(&lhs_res);
+        lhs_node.* = lhs_res.pop();
+        nodes.appendSlice(lhs_res.items) catch unreachable;
 
+        // Translate RHS 
         var rhs_res = self.translateNode(bin_op.rhs.*);
         var rhs_node = self.allocator.create(Node) catch unreachable;
-        rhs_node.* = rhs_res.source.pop();
-        res.append(&rhs_res);
+        rhs_node.* = rhs_res.pop();
+        nodes.appendSlice(rhs_res.items) catch unreachable;
 
+        // Translate Operator
         var operator: Operator = undefined;
         switch (bin_op.operator) {
             .Add => operator = .Add,
@@ -729,7 +747,8 @@ pub const Translator = struct {
             else => unreachable
         }
 
-        res.source.append(Node {
+        // Create translated node
+        nodes.append(Node {
             .BinaryOperation = BinaryOperationNode {
                 .lhs = lhs_node,
                 .operator = operator,
@@ -737,17 +756,19 @@ pub const Translator = struct {
             }
         }) catch unreachable;
 
-        return res;
+        return nodes;
     }
 
-    fn translateUnaryOperation(self: *Translator, bin_op: parser.UnaryOperationNode) File {
-        var res = File.init("_", self.allocator);
+    fn translateUnaryOperation(self: *Translator, bin_op: parser.UnaryOperationNode) NodeList {
+        var nodes = NodeList.init(self.allocator);
 
-        var value_res = self.translateNode(bin_op.value.*);
+        // Translate value
+        var res = self.translateNode(bin_op.value.*);
         var value_node = self.allocator.create(Node) catch unreachable;
-        value_node.* = value_res.source.pop();
-        res.append(&value_res);
+        value_node.* = res.pop();
+        nodes.appendSlice(res.items) catch unreachable;
 
+        // Translate operator
         var operator: Operator = undefined;
         switch (bin_op.operator) {
             .Add => operator = .Add,
@@ -756,41 +777,42 @@ pub const Translator = struct {
             else => unreachable
         }
 
-        res.source.append(Node {
+        // Create translated node
+        nodes.append(Node {
             .UnaryOperation = UnaryOperationNode {
                 .operator = operator,
                 .value = value_node,
             }
         }) catch unreachable;
 
-        return res;
+        return nodes;
     }
 
     fn translateIfStatement(self: *Translator, if_node: parser.IfNode) NodeList {
-        var res = NodeList.init(self.allocator);
+        var nodes = NodeList.init(self.allocator);
 
         var condition = self.allocator.create(Node) catch unreachable;
         var node_res = self.translateNode(if_node.if_branch.condition.*);
-        condition.* = node_res.source.pop();
-        res.appendSlice(node_res.source.items) catch unreachable;
+        condition.* = node_res.pop();
+        nodes.appendSlice(node_res.items) catch unreachable;
 
         var body = NodeList.init(self.allocator);
         for (if_node.if_branch.body.items) |node| {
             node_res = self.translateNode(node);
-            body.appendSlice(node_res.source.items) catch unreachable;
+            body.appendSlice(node_res.items) catch unreachable;
         }
 
         var elif_branches = IfBranches.init(self.allocator);
         for (if_node.elif_branches.items) |branch| {
             var elif_condition = self.allocator.create(Node) catch unreachable;
             node_res = self.translateNode(branch.condition.*);
-            elif_condition.* = node_res.source.pop();
-            res.appendSlice(node_res.source.items) catch unreachable;
+            elif_condition.* = node_res.pop();
+            nodes.appendSlice(node_res.items) catch unreachable;
 
             var elif_body = NodeList.init(self.allocator);
             for (branch.body.items) |node| {
                 node_res = self.translateNode(node);
-                elif_body.appendSlice(node_res.source.items) catch unreachable;
+                elif_body.appendSlice(node_res.items) catch unreachable;
             }
 
             elif_branches.append(IfBranch {
@@ -802,10 +824,10 @@ pub const Translator = struct {
         var else_body = NodeList.init(self.allocator);
         for (if_node.else_body.items) |node| {
             node_res = self.translateNode(node);
-            else_body.appendSlice(node_res.source.items) catch unreachable;
+            else_body.appendSlice(node_res.items) catch unreachable;
         }
 
-        res.append(Node {
+        nodes.append(Node {
             .If = IfNode {
                 .if_branch = IfBranch {
                     .condition = condition,
@@ -816,40 +838,41 @@ pub const Translator = struct {
             }
         }) catch unreachable;
 
-        return res;
+        return nodes;
     }
 
-    fn translateNode(self: *Translator, node: parser.Node) File {
-        var res = File.init("_", self.allocator);
+    fn translateNode(self: *Translator, node: parser.Node) NodeList {
+        var nodes = NodeList.init(self.allocator);
         switch (node) {
-            .Value => |value| res.source.append(self.translateValueNode(value)) catch unreachable,
-            .FunctionDefinition => |function_def| res.append(&self.translateFunctionDefinition(function_def)),
-            .FunctionCall => |function_call| res.source.append(self.translateFunctionCall(function_call)) catch unreachable,
-            .Use => |use| {
-                if (self.translateUse(use)) |res_node| {
-                    res.header.append(res_node) catch unreachable;
-                } 
-            },
-            .Return => |ret| res.append(&self.translateReturn(ret)),
-            .VariableDefinition => |var_def| res.append(&self.translateVariableDefinition(var_def)),
-            .VariableCall => |var_call| res.append(&self.translateVariableCall(var_call)),
-            .BinaryOperation => |bin_op| res.append(&self.translateBinaryOperation(bin_op)),
-            .UnaryOperation => |bin_op| res.append(&self.translateUnaryOperation(bin_op)),
-            .If => |if_statement| res.source.appendSlice(self.translateIfStatement(if_statement).items) catch unreachable,
+            .Value => |value| nodes.append(self.translateValueNode(value)) catch unreachable,
+            .FunctionDefinition => |function_def| nodes.appendSlice(self.translateFunctionDefinition(function_def).items) catch unreachable,
+            .FunctionCall => |function_call| nodes.appendSlice(self.translateFunctionCall(function_call).items) catch unreachable,
+            .Use => |use| self.translateUse(use),
+            .Return => |ret| nodes.appendSlice(self.translateReturn(ret).items) catch unreachable,
+            .VariableDefinition => |var_def| nodes.appendSlice(self.translateVariableDefinition(var_def).items) catch unreachable,
+            .VariableCall => |var_call| nodes.appendSlice(self.translateVariableCall(var_call).items) catch unreachable,
+            .BinaryOperation => |bin_op| nodes.appendSlice(self.translateBinaryOperation(bin_op).items) catch unreachable,
+            .UnaryOperation => |bin_op| nodes.appendSlice(self.translateUnaryOperation(bin_op).items) catch unreachable,
+            .If => |if_statement| nodes.appendSlice(self.translateIfStatement(if_statement).items) catch unreachable,
         }
-        return res;
+        return nodes;
     }
 
     pub fn translate(self: *Translator) Project {
         var project = Project.init(self.allocator);
+        var main_file = project.getFile("main"); // TODO: Get name from file_name
 
         while (self.getCurrent()) |current| {
-            const res = self.translateNode(current);
-            const file = if (std.mem.eql(u8, res.name, "_")) project.getFile("main")
-            else project.getFile(res.name);
-            file.append(&res);
+            const nodes = self.translateNode(current);
+            main_file.source.appendSlice(nodes.items) catch unreachable;
+
+            // const file = if (std.mem.eql(u8, res.name, "_")) project.getFile("main")
+            // else project.getFile(res.name);
+            // file.append(&res);
             self.advance();
         }
+
+        main_file.header.appendSlice(self.header.items) catch unreachable;
 
         // Generate links between .h and .c
         for (project.files.items) |*file| {
