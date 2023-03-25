@@ -522,7 +522,7 @@ pub const IfNode = struct {
 
             try writer.writeAll("<else>\n");
 
-            for (self.if_branch.body.items) |node| {
+            for (self.else_body.items) |node| {
                 try node.writeXML(writer, tabs + 2);
             }
 
@@ -630,13 +630,81 @@ pub const BreakNode = struct {
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try writer.writeAll("<continue>");
+        try writer.writeAll("<break>");
         if (self.label) |label| {
             try std.fmt.format(writer, "{s}", .{label});
         }
-        try writer.writeAll("</continue>\n");
+        try writer.writeAll("</break>\n");
     }    
 
+};
+
+pub const MatchStatement = struct {
+    condition: *Node,
+    branches: IfBranchList,
+    else_body: NodeList,
+
+    pub fn writeXML(self: *const MatchStatement, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<match>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<condition>\n");
+
+        try self.condition.writeXML(writer, tabs + 2);
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</condition>\n");  
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<branches>\n");
+
+        for (self.branches.items) |branch| {
+            try branch.writeXML(writer, tabs + 2);
+        }
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</branches>\n");  
+
+        if (self.else_body.items.len != 0) {
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try writer.writeAll("<else>\n");
+
+            for (self.else_body.items) |node| {
+                try node.writeXML(writer, tabs + 2);
+            }
+
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try writer.writeAll("</else>\n");
+        }
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</match>\n");      
+    }
 };
 
 pub const NodeTag = enum {
@@ -654,6 +722,7 @@ pub const NodeTag = enum {
     Label,
     Continue,
     Break,
+    Match,
 };
 
 pub const Node = union(NodeTag) {
@@ -671,6 +740,7 @@ pub const Node = union(NodeTag) {
     Label: LabelNode,
     Continue: ContinueNode,
     Break: BreakNode,
+    Match: MatchStatement,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -688,6 +758,7 @@ pub const Node = union(NodeTag) {
             .Label => |node| return node.writeXML(writer, tabs),
             .Continue => |node| return node.writeXML(writer, tabs),
             .Break => |node| return node.writeXML(writer, tabs),
+            .Match => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -712,6 +783,7 @@ pub const Node = union(NodeTag) {
             .Label => |node| node.writeXML(writer, 0) catch unreachable,
             .Continue => |node| node.writeXML(writer, 0) catch unreachable,
             .Break => |node| node.writeXML(writer, 0) catch unreachable,
+            .Match => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -1341,6 +1413,7 @@ pub const Parser = struct {
 
         var body = NodeList.init(self.allocator);
         var current = self.expectCurrent("end");
+        self.tabs += 1;
         while (!current.data.isKeyword(lexer.TokenKeyword.End)) {
             if (current.data.isFormat(lexer.TokenFormat.Tab) or current.data.isFormat(lexer.TokenFormat.NewLine)) {
                 self.advance();
@@ -1350,6 +1423,7 @@ pub const Parser = struct {
                 current = self.expectCurrent("end");
             }
         }
+        self.tabs -= 1;
         self.advance();
 
         return Node {
@@ -1400,6 +1474,92 @@ pub const Parser = struct {
         };
     }
 
+    fn parseMatch(self: *Parser) Node {
+        self.advance();
+        var condition = self.allocator.create(Node) catch unreachable;
+        condition.* = self.parseExpr();
+        self.expectEOS();
+
+        var tabs: usize = 0;
+        var branches = IfBranchList.init(self.allocator);
+        var else_body = NodeList.init(self.allocator);
+        self.tabs += 1;
+        while (true) {
+            var current = self.expectCurrent("end");
+            if (current.data.isFormat(lexer.TokenFormat.Tab)) {
+                tabs += 1;
+                self.advance();
+                continue;
+            } else if (current.data.isFormat(lexer.TokenFormat.NewLine)) {
+                tabs = 0;
+                self.advance();
+                continue;
+            } else if (current.data.isKeyword(lexer.TokenKeyword.Else)) {
+                self.advance();
+                while (!current.data.isKeyword(lexer.TokenKeyword.End)) {
+                    if (current.data.isFormat(lexer.TokenFormat.Tab) or current.data.isFormat(lexer.TokenFormat.NewLine)) {
+                        self.advance();
+                        current = self.expectCurrent("end");
+                        continue;
+                    }
+                    else_body.append(self.parseCurrent()) catch unreachable;
+                    current = self.expectCurrent("end");
+                }
+                break;
+            } else if (current.data.isKeyword(lexer.TokenKeyword.End)) {
+                break;
+            }
+
+            if (tabs == self.tabs) {
+                var expr = self.allocator.create(Node) catch unreachable;
+                expr.* = self.parseExpr();
+                self.expectSymbol(lexer.TokenSymbol.RightDoubleArrow);
+                self.advance();
+                self.tabs += 1;
+                var tab_count: usize = 0;
+                var first = true;
+                var body = NodeList.init(self.allocator);
+                var last_index = self.index;
+                while (true) {
+                    current = self.expectCurrent("end");
+                    if (current.data.isFormat(lexer.TokenFormat.Tab)) {
+                        tab_count += 1;
+                        self.advance();
+                    } if (current.data.isFormat(lexer.TokenFormat.NewLine)) {
+                        tab_count = 0;
+                        first = false;
+                        self.advance();
+                    } else if (first or tab_count >= self.tabs) {
+                        const node = self.parseCurrent();
+                        body.append(node) catch unreachable;
+                        last_index = self.index;
+                    } else {
+                        break;
+                    }
+                }
+                self.tabs -= 1;
+                self.index = last_index;
+                branches.append(IfBranch {
+                    .condition = expr,
+                    .body = body,
+                }) catch unreachable;
+            } else {
+                std.log.info("tabs: {} / {}", .{tabs, self.tabs});
+                current.errorMessage("Unexpected token '{full}', should be 'Tab' or 'end'", .{current.data}, self.src, self.file_name);
+            }
+        }
+        self.tabs -= 1;
+        self.advance();
+
+        return Node {
+            .Match = MatchStatement {
+                .condition = condition,
+                .branches = branches,
+                .else_body = else_body,
+            }
+        };
+    }
+
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         switch (keyword) {
             .Fn => return self.parseFunctionDefinition(false),
@@ -1417,6 +1577,7 @@ pub const Parser = struct {
             .While => return self.parseWhileLoop(),
             .Continue => return self.parseContinue(),
             .Break => return self.parseBreak(),
+            .Match => return self.parseMatch(),
             else => {
                 const current = self.getCurrent().?;
                 current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);

@@ -955,6 +955,65 @@ pub const Translator = struct {
         return nodes;
     }
 
+    fn translateMatchStatement(self: *Translator, match_node: parser.MatchStatement) NodeList {
+        var nodes = NodeList.init(self.allocator);
+
+        var lhs = self.allocator.create(Node) catch unreachable;
+        var res = self.translateNode(match_node.condition.*);
+        lhs.* = res.pop();
+        nodes.appendSlice(res.items) catch unreachable;
+
+        var if_branch: ?IfBranch = null;
+        var branches = IfBranches.init(self.allocator);
+
+        for (match_node.branches.items) |branch| {
+            var rhs = self.allocator.create(Node) catch unreachable;
+            res = self.translateNode(branch.condition.*);
+            rhs.* = res.pop();
+            nodes.appendSlice(res.items) catch unreachable;
+
+            var condition = self.allocator.create(Node) catch unreachable;
+            condition.* = Node {
+                .BinaryOperation = BinaryOperationNode {
+                    .lhs = lhs,
+                    .operator = Operator.Equal,
+                    .rhs = rhs
+                }
+            };
+
+            var body = NodeList.init(self.allocator);
+            for (branch.body.items) |node| {
+                body.appendSlice(self.translateNode(node).items) catch unreachable;
+            }
+
+            const new_branch = IfBranch {
+                .condition = condition,
+                .body = body
+            };
+
+            if (if_branch == null) {
+                if_branch = new_branch;
+            } else {
+                branches.append(new_branch) catch unreachable;
+            }
+        }
+
+        var else_body = NodeList.init(self.allocator);
+        for (match_node.else_body.items) |node| {
+            else_body.appendSlice(self.translateNode(node).items) catch unreachable;
+        }
+
+        nodes.append(Node {
+            .If = IfNode {
+                .if_branch = if_branch.?,
+                .elif_branches = branches,
+                .else_body = else_body,
+            }
+        }) catch unreachable;
+
+        return nodes;
+    }
+
     fn translateLabel(self: *Translator, label: parser.LabelNode) Node {
         _ = self;
         return Node {
@@ -999,6 +1058,7 @@ pub const Translator = struct {
             .Label => |label| nodes.append(self.translateLabel(label)) catch unreachable,
             .Continue => |label| nodes.append(self.translateContinue(label)) catch unreachable,
             .Break => |label| nodes.append(self.translateBreak(label)) catch unreachable,
+            .Match => |match| nodes.appendSlice(self.translateMatchStatement(match).items) catch unreachable,
         }
         return nodes;
     }
