@@ -1,23 +1,12 @@
 use "std-stdio"
 
-extern fn printf(msg: c_string, num: c_int) 
+extern fn printf(msg: c_string) 
 
 class Person
     var name: c_string
     var age: c_int
 
+    fn sayHello() => printf("Hello\n")
+
 # main function
 fn main() =>
-    var i: c_int = 0
-    while i < 10 do
-        match i
-            0 => printf("zero\n")
-            1 => printf("one\n")
-            2 => printf("two\n")
-            3 => printf("three\n")
-        else
-            printf("Something else\n")
-        end
-        printf("i: %d\n", i)
-        i = i + 1
-    end

@@ -1094,6 +1094,7 @@ pub const Translator = struct {
         var nodes = NodeList.init(self.allocator);
 
         var fields = StructFields.init(self.allocator);
+        var methods = parser.NodeList.init(self.allocator);
         
         for (class.body.items) |node| {
             if (node == parser.NodeTag.VariableDefinition) {
@@ -1101,6 +1102,8 @@ pub const Translator = struct {
                     .name = node.VariableDefinition.name,
                     .data_type = self.translateType(node.VariableDefinition.data_type),
                 }) catch unreachable;
+            } else if (node == parser.NodeTag.FunctionDefinition) {
+                methods.append(node) catch unreachable;
             } else {
                 @panic("Unexpected node in class!");
             }
@@ -1112,6 +1115,10 @@ pub const Translator = struct {
                 .fields = fields
             }
         }) catch unreachable;
+
+        for (methods.items) |method| {
+            nodes.appendSlice(self.translateNode(method).items) catch unreachable;
+        }
 
         return nodes;
     }

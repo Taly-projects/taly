@@ -72,9 +72,37 @@ pub const Generator = struct {
         };
     }
 
+    fn generateClass(self: *Generator, class: parser.ClassNode) parser.Node {
+        var body = parser.NodeList.init(self.allocator);
+
+        for (class.body.items) |node| {
+            if (node == parser.NodeTag.FunctionDefinition) {
+                var params = parser.FunctionDefinitionParameters.init(self.allocator);
+                params.append(parser.FunctionDefinitionParameter {
+                    .name = "self",
+                    .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.name, "*"}) catch unreachable
+                }) catch unreachable;
+                params.appendSlice(node.FunctionDefinition.parameters.items) catch unreachable;
+                var node_cpy = node;
+                node_cpy.FunctionDefinition.parameters = params;
+                body.append(node_cpy) catch unreachable;
+            } else {
+                body.append(node) catch unreachable;
+            }
+        }
+
+        return parser.Node {
+            .Class = parser.ClassNode {
+                .name = class.name,
+                .body = body
+            }
+        };
+    }
+
     fn generateNode(self: *Generator, node: parser.Node) parser.Node {
         switch (node) {
             .FunctionDefinition => |fun_def| return self.generateFunctionDefinition(fun_def),
+            .Class => |class| return self.generateClass(class),
             else => return node
         }
     }

@@ -978,13 +978,14 @@ pub const Parser = struct {
                 self.advance();
             }
         }
-        
+
         var body = NodeList.init(self.allocator);
         var last_index = self.index;
         if (self.getCurrent() != null) {
             current = self.getCurrent().?;
             if (current.data.isSymbol(lexer.TokenSymbol.RightDoubleArrow)) {
                 self.advance();
+                last_index = self.index;
                 self.tabs += 1;
                 var tab_count: usize = 0;
                 var first = true;
@@ -993,7 +994,7 @@ pub const Parser = struct {
                     if (current.data.isFormat(lexer.TokenFormat.Tab)) {
                         tab_count += 1;
                         self.advance();
-                    } if (current.data.isFormat(lexer.TokenFormat.NewLine)) {
+                    } else if (current.data.isFormat(lexer.TokenFormat.NewLine)) {
                         tab_count = 0;
                         first = false;
                         self.advance();
@@ -1621,7 +1622,7 @@ pub const Parser = struct {
             if (current.data.isFormat(lexer.TokenFormat.Tab)) {
                 tab_count += 1;
                 self.advance();
-            } if (current.data.isFormat(lexer.TokenFormat.NewLine)) {
+            } else if (current.data.isFormat(lexer.TokenFormat.NewLine)) {
                 tab_count = 0;
                 first = false;
                 self.advance();
