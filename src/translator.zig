@@ -544,6 +544,20 @@ pub const StructNode = struct {
     }
 };
 
+pub const CI_PureCNode = struct {
+    code: []const u8,
+
+    pub fn writeC(self: *const CI_PureCNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "{s}", .{self.code});
+
+        return false;
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionHeader,
@@ -561,6 +575,7 @@ pub const NodeTag = enum {
     Continue,
     Break,
     Struct,
+    CI_PureC,
 };
 
 pub const Node = union(NodeTag) {
@@ -580,6 +595,7 @@ pub const Node = union(NodeTag) {
     Continue: ContinueNode,
     Break: BreakNode,
     Struct: StructNode,
+    CI_PureC: CI_PureCNode,
 
     pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -599,6 +615,7 @@ pub const Node = union(NodeTag) {
             .Continue => |node| return node.writeC(writer, tabs),
             .Break => |node| return node.writeC(writer, tabs),
             .Struct => |node| return node.writeC(writer, tabs),
+            .CI_PureC => |node| return node.writeC(writer, tabs),
         }
     }
 
@@ -1123,6 +1140,15 @@ pub const Translator = struct {
         return nodes;
     }
 
+    fn translateCIPureC(self: *Translator, node: parser.CI_PureCNode) Node {
+        _ = self;
+        return Node {
+            .CI_PureC = CI_PureCNode {
+                .code = node.code
+            }
+        };
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
         switch (node) {
@@ -1142,6 +1168,7 @@ pub const Translator = struct {
             .Break => |label| nodes.append(self.translateBreak(label)) catch unreachable,
             .Match => |match| nodes.appendSlice(self.translateMatchStatement(match).items) catch unreachable,
             .Class => |class| nodes.appendSlice(self.translateClass(class).items) catch unreachable,
+            .CI_PureC => |ci| nodes.append(self.translateCIPureC(ci)) catch unreachable,
         }
         return nodes;
     }

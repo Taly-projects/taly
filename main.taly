@@ -6,6 +6,8 @@ class Person
     var name: c_string
     var age: c_int
 
+    new create() =>
+
     fn sayHello() => printf("Hello\n")
 
 # main function

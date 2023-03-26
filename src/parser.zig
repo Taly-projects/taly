@@ -89,6 +89,7 @@ pub const FunctionDefinitionNode = struct {
     parameters: FunctionDefinitionParameters,
     return_type: ?[]const u8,
     external: bool,
+    constructor: bool,
     body: NodeList,
 
     pub fn writeXML(self: *const FunctionDefinitionNode, writer: anytype, tabs: usize) anyerror!void {
@@ -134,6 +135,12 @@ pub const FunctionDefinitionNode = struct {
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
 
         try std.fmt.format(writer, "<external>{}</external>\n", .{self.external});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<constructor>{}</constructor>\n", .{self.constructor});
 
         // Add tabs (+ 1)
         i = 0;
@@ -750,6 +757,19 @@ pub const ClassNode = struct {
     }
 };
 
+// Compiler Instruction - Pure C
+pub const CI_PureCNode = struct {
+    code: []const u8,
+
+    pub fn writeXML(self: *const CI_PureCNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<ci-pure-c>{s}</ci-pure-c>\n", .{self.code});
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
@@ -767,6 +787,7 @@ pub const NodeTag = enum {
     Break,
     Match,
     Class,
+    CI_PureC,
 };
 
 pub const Node = union(NodeTag) {
@@ -786,6 +807,7 @@ pub const Node = union(NodeTag) {
     Break: BreakNode,
     Match: MatchStatement,
     Class: ClassNode,
+    CI_PureC: CI_PureCNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -805,6 +827,7 @@ pub const Node = union(NodeTag) {
             .Break => |node| return node.writeXML(writer, tabs),
             .Match => |node| return node.writeXML(writer, tabs),
             .Class => |node| return node.writeXML(writer, tabs),
+            .CI_PureC => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -831,6 +854,7 @@ pub const Node = union(NodeTag) {
             .Break => |node| node.writeXML(writer, 0) catch unreachable,
             .Match => |node| node.writeXML(writer, 0) catch unreachable,
             .Class => |node| node.writeXML(writer, 0) catch unreachable,
+            .CI_PureC => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -941,7 +965,7 @@ pub const Parser = struct {
         self.index += 1;
     }
 
-    fn parseFunctionDefinition(self: *Parser, external: bool) Node {
+    fn parseFunctionDefinition(self: *Parser, external: bool, constructor: bool) Node {
         self.advance();
         const id = self.expectIdentifier();
         self.advance();
@@ -1017,6 +1041,7 @@ pub const Parser = struct {
                 .parameters = parameters,
                 .return_type = return_type,
                 .external = external,
+                .constructor = constructor,
                 .body = body
             }
         };
@@ -1647,11 +1672,11 @@ pub const Parser = struct {
 
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         switch (keyword) {
-            .Fn => return self.parseFunctionDefinition(false),
+            .Fn => return self.parseFunctionDefinition(false, false),
             .Extern => {
                 self.advance();
                 self.expectExactKeyword(lexer.TokenKeyword.Fn);
-                return self.parseFunctionDefinition(true);
+                return self.parseFunctionDefinition(true, false);
             },
             .Use => return self.parseUse(),
             .Return => return self.parseReturn(),
@@ -1664,6 +1689,7 @@ pub const Parser = struct {
             .Break => return self.parseBreak(),
             .Match => return self.parseMatch(),
             .Class => return self.parseClass(),
+            .New => return self.parseFunctionDefinition(false, true),
             else => {
                 const current = self.getCurrent().?;
                 current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);

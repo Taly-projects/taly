@@ -67,6 +67,7 @@ pub const Generator = struct {
                 .parameters = node.parameters,
                 .return_type = return_type,
                 .external = node.external,
+                .constructor = node.constructor,
                 .body = body
             }
         };
@@ -77,15 +78,49 @@ pub const Generator = struct {
 
         for (class.body.items) |node| {
             if (node == parser.NodeTag.FunctionDefinition) {
-                var params = parser.FunctionDefinitionParameters.init(self.allocator);
-                params.append(parser.FunctionDefinitionParameter {
-                    .name = "self",
-                    .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.name, "*"}) catch unreachable
-                }) catch unreachable;
-                params.appendSlice(node.FunctionDefinition.parameters.items) catch unreachable;
-                var node_cpy = node;
-                node_cpy.FunctionDefinition.parameters = params;
-                body.append(node_cpy) catch unreachable;
+                if (node.FunctionDefinition.constructor) {
+                    var f_body = parser.NodeList.init(self.allocator);
+                    f_body.append(parser.Node {
+                        .VariableDefinition = parser.VariableDefinitionNode {
+                            .constant = false,
+                            .name = "self_data",
+                            .data_type = class.name,
+                            .value = null
+                        }
+                    }) catch unreachable;
+                    f_body.append(parser.Node {
+                        .CI_PureC = parser.CI_PureCNode {
+                            .code = std.mem.concat(self.allocator, u8, &[_][]const u8 {class.name, "* self = &self_data;"}) catch unreachable
+                        }
+                    }) catch unreachable;
+                    f_body.appendSlice(node.FunctionDefinition.body.items) catch unreachable;
+                    var return_value = self.allocator.create(parser.Node) catch unreachable;
+                    return_value.* = parser.Node {
+                        .VariableCall = parser.VariableCallNode {
+                            .name = "self_data"
+                        }
+                    };
+                    f_body.append(parser.Node {
+                        .Return = parser.ReturnNode {
+                            .value = return_value
+                        }
+                    }) catch unreachable;
+
+                    var node_cpy = node;
+                    node_cpy.FunctionDefinition.return_type = class.name;
+                    node_cpy.FunctionDefinition.body = f_body;
+                    body.append(node_cpy) catch unreachable;
+                } else {
+                    var params = parser.FunctionDefinitionParameters.init(self.allocator);
+                    params.append(parser.FunctionDefinitionParameter {
+                        .name = "self",
+                        .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.name, "*"}) catch unreachable
+                    }) catch unreachable;
+                    params.appendSlice(node.FunctionDefinition.parameters.items) catch unreachable;
+                    var node_cpy = node;
+                    node_cpy.FunctionDefinition.parameters = params;
+                    body.append(node_cpy) catch unreachable;
+                }
             } else {
                 body.append(node) catch unreachable;
             }
