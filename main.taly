@@ -2,6 +2,10 @@ use "std-stdio"
 
 extern fn printf(msg: c_string, num: c_int) 
 
+class Person
+    var name: c_string
+    var age: c_int
+
 # main function
 fn main() =>
     var i: c_int = 0

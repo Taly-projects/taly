@@ -498,6 +498,52 @@ pub const BreakNode = struct {
     }
 };
 
+pub const StructField = struct {
+    data_type: []const u8,
+    name: []const u8,
+
+    pub fn writeC(self: *const StructField, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "{s} {s}", .{self.data_type, self.name});
+        
+        return true;
+    }
+};
+pub const StructFields = std.ArrayList(StructField);
+
+pub const StructNode = struct {
+    name: []const u8,
+    fields: StructFields,
+
+    pub fn writeC(self: *const StructNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "typedef struct {s} {{", .{self.name});
+
+        for (self.fields.items) |field| {
+            try writer.writeAll("\n");
+            if (try field.writeC(writer, tabs + 1)) {
+                try writer.writeAll(";");
+            }
+        }
+        if (self.fields.items.len != 0) {
+            try writer.writeAll("\n");
+
+            // Add tabs
+            i = 0;
+            while (i < tabs) : (i += 1) try writer.writeAll("\t");
+        }
+        try std.fmt.format(writer, "}} {s}", .{self.name});
+
+        return true;
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionHeader,
@@ -514,6 +560,7 @@ pub const NodeTag = enum {
     Label,
     Continue,
     Break,
+    Struct,
 };
 
 pub const Node = union(NodeTag) {
@@ -532,6 +579,7 @@ pub const Node = union(NodeTag) {
     Label: LabelNode,
     Continue: ContinueNode,
     Break: BreakNode,
+    Struct: StructNode,
 
     pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -550,6 +598,7 @@ pub const Node = union(NodeTag) {
             .Label => |node| return node.writeC(writer, tabs),
             .Continue => |node| return node.writeC(writer, tabs),
             .Break => |node| return node.writeC(writer, tabs),
+            .Struct => |node| return node.writeC(writer, tabs),
         }
     }
 
@@ -1041,6 +1090,32 @@ pub const Translator = struct {
         };
     }
 
+    fn translateClass(self: *Translator, class: parser.ClassNode) NodeList {
+        var nodes = NodeList.init(self.allocator);
+
+        var fields = StructFields.init(self.allocator);
+        
+        for (class.body.items) |node| {
+            if (node == parser.NodeTag.VariableDefinition) {
+                fields.append(StructField {
+                    .name = node.VariableDefinition.name,
+                    .data_type = self.translateType(node.VariableDefinition.data_type),
+                }) catch unreachable;
+            } else {
+                @panic("Unexpected node in class!");
+            }
+        }
+
+        self.header.append(Node {
+            .Struct = StructNode {
+                .name = class.name,
+                .fields = fields
+            }
+        }) catch unreachable;
+
+        return nodes;
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
         switch (node) {
@@ -1059,6 +1134,7 @@ pub const Translator = struct {
             .Continue => |label| nodes.append(self.translateContinue(label)) catch unreachable,
             .Break => |label| nodes.append(self.translateBreak(label)) catch unreachable,
             .Match => |match| nodes.appendSlice(self.translateMatchStatement(match).items) catch unreachable,
+            .Class => |class| nodes.appendSlice(self.translateClass(class).items) catch unreachable,
         }
         return nodes;
     }

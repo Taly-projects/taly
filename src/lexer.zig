@@ -21,6 +21,7 @@ pub const TokenKeyword = enum {
     Continue,
     Break,
     Match,
+    Class,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         if (std.mem.eql(u8, data, "fn")) {
@@ -61,6 +62,8 @@ pub const TokenKeyword = enum {
             return TokenKeyword.Break;
         } else if (std.mem.eql(u8, data, "match")) {
             return TokenKeyword.Match;
+        } else if (std.mem.eql(u8, data, "class")) {
+            return TokenKeyword.Class;
         }
 
         return null;
@@ -90,6 +93,7 @@ pub const TokenKeyword = enum {
             .Continue => return std.fmt.format(writer, "continue", .{}),
             .Break => return std.fmt.format(writer, "break", .{}),
             .Match => return std.fmt.format(writer, "match", .{}),
+            .Class => return std.fmt.format(writer, "class", .{}),
         }
     }
 };

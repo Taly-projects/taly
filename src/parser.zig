@@ -707,6 +707,49 @@ pub const MatchStatement = struct {
     }
 };
 
+pub const ClassNode = struct {
+    name: []const u8,
+    body: NodeList,
+
+    pub fn writeXML(self: *const ClassNode, writer: anytype, tabs: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<class>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<name>{s}</name>", .{self.name});
+
+        if (self.body.items.len != 0) {
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try writer.writeAll("<body>\n");
+
+            for (self.body.items) |node| {
+                try node.writeXML(writer, tabs + 2);
+            }
+
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try writer.writeAll("</body>\n");
+        }
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</class>\n");      
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
@@ -723,6 +766,7 @@ pub const NodeTag = enum {
     Continue,
     Break,
     Match,
+    Class,
 };
 
 pub const Node = union(NodeTag) {
@@ -741,6 +785,7 @@ pub const Node = union(NodeTag) {
     Continue: ContinueNode,
     Break: BreakNode,
     Match: MatchStatement,
+    Class: ClassNode,
 
     pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
         switch (self.*) {
@@ -759,6 +804,7 @@ pub const Node = union(NodeTag) {
             .Continue => |node| return node.writeXML(writer, tabs),
             .Break => |node| return node.writeXML(writer, tabs),
             .Match => |node| return node.writeXML(writer, tabs),
+            .Class => |node| return node.writeXML(writer, tabs),
         }
     }
 
@@ -784,6 +830,7 @@ pub const Node = union(NodeTag) {
             .Continue => |node| node.writeXML(writer, 0) catch unreachable,
             .Break => |node| node.writeXML(writer, 0) catch unreachable,
             .Match => |node| node.writeXML(writer, 0) catch unreachable,
+            .Class => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
 };
@@ -1560,6 +1607,43 @@ pub const Parser = struct {
         };
     }
 
+    fn parseClass(self:* Parser) Node {
+        self.advance();
+        const name = self.expectIdentifier();
+        self.advance();
+        self.tabs += 1;
+        var tab_count: usize = 0;
+        var first = true;
+        var body = NodeList.init(self.allocator);
+        var last_index = self.index;
+        while (self.getCurrent() != null) {
+            const current = self.getCurrent().?;
+            if (current.data.isFormat(lexer.TokenFormat.Tab)) {
+                tab_count += 1;
+                self.advance();
+            } if (current.data.isFormat(lexer.TokenFormat.NewLine)) {
+                tab_count = 0;
+                first = false;
+                self.advance();
+            } else if (first or tab_count >= self.tabs) {
+                const node = self.parseCurrent();
+                body.append(node) catch unreachable;
+                last_index = self.index;
+            } else {
+                break;
+            }
+        }
+        self.tabs -= 1;
+        self.index = last_index;
+
+        return Node {
+            .Class = ClassNode {
+                .name = name,
+                .body = body
+            }
+        };
+    }
+
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         switch (keyword) {
             .Fn => return self.parseFunctionDefinition(false),
@@ -1578,6 +1662,7 @@ pub const Parser = struct {
             .Continue => return self.parseContinue(),
             .Break => return self.parseBreak(),
             .Match => return self.parseMatch(),
+            .Class => return self.parseClass(),
             else => {
                 const current = self.getCurrent().?;
                 current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);
