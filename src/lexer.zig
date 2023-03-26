@@ -1,8 +1,32 @@
 const std = @import("std");
 const position = @import("position.zig");
 
-pub const TokenKeyword = enum {
-    Fn,
+pub const TokenKeyword = enum(u8) {
+    const KEYWORD_NAME = [_][]const u8 {
+        "fn",
+        "extern",
+        "use",
+        "return",
+        "var",
+        "const",
+        "and",
+        "or",
+        "not",
+        "if",
+        "then",
+        "elif",
+        "else",
+        "end",
+        "while",
+        "do",
+        "continue",
+        "break",
+        "match",
+        "class",
+        "new",
+    };
+
+    Fn = 0,
     Extern,
     Use,
     Return,
@@ -25,48 +49,12 @@ pub const TokenKeyword = enum {
     New,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
-        if (std.mem.eql(u8, data, "fn")) {
-            return TokenKeyword.Fn;
-        } else if (std.mem.eql(u8, data, "extern")) {
-            return TokenKeyword.Extern;
-        } else if (std.mem.eql(u8, data, "use")) {
-            return TokenKeyword.Use;
-        } else if (std.mem.eql(u8, data, "return")) {
-            return TokenKeyword.Return;
-        } else if (std.mem.eql(u8, data, "var")) {
-            return TokenKeyword.Var;
-        } else if (std.mem.eql(u8, data, "const")) {
-            return TokenKeyword.Const;
-        } else if (std.mem.eql(u8, data, "and")) {
-            return TokenKeyword.And;
-        } else if (std.mem.eql(u8, data, "or")) {
-            return TokenKeyword.Or;
-        } else if (std.mem.eql(u8, data, "not")) {
-            return TokenKeyword.Not;
-        } else if (std.mem.eql(u8, data, "if")) {
-            return TokenKeyword.If;
-        } else if (std.mem.eql(u8, data, "then")) {
-            return TokenKeyword.Then;
-        } else if (std.mem.eql(u8, data, "elif")) {
-            return TokenKeyword.Elif;
-        } else if (std.mem.eql(u8, data, "else")) {
-            return TokenKeyword.Else;
-        } else if (std.mem.eql(u8, data, "end")) {
-            return TokenKeyword.End;
-        } else if (std.mem.eql(u8, data, "while")) {
-            return TokenKeyword.While;
-        } else if (std.mem.eql(u8, data, "do")) {
-            return TokenKeyword.Do;
-        } else if (std.mem.eql(u8, data, "continue")) {
-            return TokenKeyword.Continue;
-        } else if (std.mem.eql(u8, data, "break")) {
-            return TokenKeyword.Break;
-        } else if (std.mem.eql(u8, data, "match")) {
-            return TokenKeyword.Match;
-        } else if (std.mem.eql(u8, data, "class")) {
-            return TokenKeyword.Class;
-        } else if (std.mem.eql(u8, data, "new")) {
-            return TokenKeyword.New;
+        var i: usize = 0;
+        for (KEYWORD_NAME) |name| {
+            if (std.mem.eql(u8, data, name)) {
+                return @intToEnum(TokenKeyword, i);
+            }
+            i += 1;
         }
 
         return null;
@@ -76,29 +64,7 @@ pub const TokenKeyword = enum {
         _ = fmt;
         _ = options;
 
-        switch (self.*) {
-            .Fn => return std.fmt.format(writer, "fn", .{}),
-            .Use => return std.fmt.format(writer, "use", .{}),
-            .Extern => return std.fmt.format(writer, "extern", .{}),
-            .Return => return std.fmt.format(writer, "return", .{}),
-            .Var => return std.fmt.format(writer, "var", .{}),
-            .Const => return std.fmt.format(writer, "const", .{}),
-            .And => return std.fmt.format(writer, "and", .{}),
-            .Or => return std.fmt.format(writer, "or", .{}),
-            .Not => return std.fmt.format(writer, "not", .{}),
-            .If => return std.fmt.format(writer, "if", .{}),
-            .Then => return std.fmt.format(writer, "then", .{}),
-            .Elif => return std.fmt.format(writer, "elif", .{}),
-            .Else => return std.fmt.format(writer, "else", .{}),
-            .End => return std.fmt.format(writer, "end", .{}),
-            .While => return std.fmt.format(writer, "while", .{}),
-            .Do => return std.fmt.format(writer, "do", .{}),
-            .Continue => return std.fmt.format(writer, "continue", .{}),
-            .Break => return std.fmt.format(writer, "break", .{}),
-            .Match => return std.fmt.format(writer, "match", .{}),
-            .Class => return std.fmt.format(writer, "class", .{}),
-            .New => return std.fmt.format(writer, "new", .{}),
-        }
+        return std.fmt.format(writer, "{s}", .{KEYWORD_NAME[@enumToInt(self.*)]});
     }
 };
 
