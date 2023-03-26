@@ -241,6 +241,8 @@ pub const Operator = enum {
     And,
     Or,
     Not,
+    Access,
+    PointerAccess,
 };
 
 pub const BinaryOperationNode = struct {
@@ -307,6 +309,14 @@ pub const BinaryOperationNode = struct {
             },
             .Or => {
                 try writer.writeAll(" || ");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .Access => {
+                try writer.writeAll(".");
+                _ = try self.rhs.writeC(writer, 0);
+            },
+            .PointerAccess => {
+                try writer.writeAll("->");
                 _ = try self.rhs.writeC(writer, 0);
             },
             else => unreachable,
@@ -733,7 +743,7 @@ pub const Translator = struct {
         for (function_def.parameters.items) |param| {
             parameters.append(FunctionDefinitionParameter {
                 .name = param.name,
-                .data_type = param.data_type
+                .data_type = self.translateType(param.data_type)
             }) catch unreachable;
         }
 
@@ -900,6 +910,9 @@ pub const Translator = struct {
             .NotEqual => operator = .NotEqual,
             .And => operator = .And,
             .Or => operator = .Or,
+            .Access => {
+                operator = .Access;
+            },
             else => unreachable
         }
 

@@ -85,6 +85,7 @@ pub const TokenSymbol = enum {
     LeftAngleEqual,
     DoubleEqual,
     ExclamationMarkEqual,
+    Dot,
 
     pub fn format(self: *const TokenSymbol, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         // _ = fmt;
@@ -108,6 +109,7 @@ pub const TokenSymbol = enum {
                 .LeftAngleEqual => return std.fmt.format(writer, "Left Angle Equal `<=`", .{}),
                 .DoubleEqual => return std.fmt.format(writer, "Double Equal `==`", .{}),
                 .ExclamationMarkEqual => return std.fmt.format(writer, "Exclamation Mark Equal `!=`", .{}),
+                .Dot => return std.fmt.format(writer, "Dot `.`", .{}),
             }
         } else {
             switch (self.*) {
@@ -127,6 +129,7 @@ pub const TokenSymbol = enum {
                 .LeftAngleEqual => return std.fmt.format(writer, "<=", .{}),
                 .DoubleEqual => return std.fmt.format(writer, "==", .{}),
                 .ExclamationMarkEqual => return std.fmt.format(writer, "!=", .{}),
+                .Dot => return std.fmt.format(writer, ".", .{}),
             }
         }
     }
@@ -527,6 +530,7 @@ pub const Lexer = struct {
                     '-' => tokens.append(self.makeSingle(Token { .Symbol = .Dash })) catch unreachable,
                     '*' => tokens.append(self.makeSingle(Token { .Symbol = .Star })) catch unreachable,
                     '/' => tokens.append(self.makeSingle(Token { .Symbol = .Slash })) catch unreachable,
+                    '.' => tokens.append(self.makeSingle(Token { .Symbol = .Dot })) catch unreachable,
                     ' ', '\r' => {
                         // Ignored
                     },

@@ -339,6 +339,7 @@ pub const Operator = enum {
     And,
     Or,
     Not,
+    Access,
 
     pub fn writeXML(self: *const Operator, writer: anytype, tabs: usize) anyerror!void {
         // Add tabs
@@ -361,6 +362,7 @@ pub const Operator = enum {
             .And => try writer.writeAll("and"),
             .Or => try writer.writeAll("or"),
             .Not => try writer.writeAll("not"),
+            .Access => try writer.writeAll("access"),
         }
         try writer.writeAll("</operator\n>");
     }
@@ -1109,13 +1111,13 @@ pub const Parser = struct {
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
-            if (current.data.isSymbol(lexer.TokenSymbol.Equal)) {
-                operator = Operator.Assignment;
+            if (current.data.isSymbol(lexer.TokenSymbol.Dot)) {
+                operator = Operator.Access;
             } else {
                 break;
             }
             self.advance();
-            const rhs = self.parseExpr();
+            const rhs = self.parseValue();
             self.advance();
 
             var lhs_alloc = self.allocator.create(Node) catch unreachable;
@@ -1140,15 +1142,13 @@ pub const Parser = struct {
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
-            if (current.data.isSymbol(lexer.TokenSymbol.Star)) {
-                operator = Operator.Multiply;
-            } else if (current.data.isSymbol(lexer.TokenSymbol.Slash)) {
-                operator = Operator.Divide;
+            if (current.data.isSymbol(lexer.TokenSymbol.Equal)) {
+                operator = Operator.Assignment;
             } else {
                 break;
             }
             self.advance();
-            const rhs = self.parseExpr0();
+            const rhs = self.parseExpr();
 
             var lhs_alloc = self.allocator.create(Node) catch unreachable;
             lhs_alloc.* = lhs;
@@ -1172,10 +1172,10 @@ pub const Parser = struct {
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
-            if (current.data.isSymbol(lexer.TokenSymbol.Plus)) {
-                operator = Operator.Add;
-            } else if (current.data.isSymbol(lexer.TokenSymbol.Dash)) {
-                operator = Operator.Subtract;
+            if (current.data.isSymbol(lexer.TokenSymbol.Star)) {
+                operator = Operator.Multiply;
+            } else if (current.data.isSymbol(lexer.TokenSymbol.Slash)) {
+                operator = Operator.Divide;
             } else {
                 break;
             }
@@ -1204,18 +1204,10 @@ pub const Parser = struct {
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
-            if (current.data.isSymbol(lexer.TokenSymbol.RightAngle)) {
-                operator = Operator.Greater;
-            } else if (current.data.isSymbol(lexer.TokenSymbol.RightAngleEqual)) {
-                operator = Operator.GreaterOrEqual;
-            } else if (current.data.isSymbol(lexer.TokenSymbol.LeftAngle)) {
-                operator = Operator.Less;
-            } else if (current.data.isSymbol(lexer.TokenSymbol.LeftAngleEqual)) {
-                operator = Operator.LessOrEqual;
-            } else if (current.data.isSymbol(lexer.TokenSymbol.DoubleEqual)) {
-                operator = Operator.Equal;
-            } else if (current.data.isSymbol(lexer.TokenSymbol.ExclamationMarkEqual)) {
-                operator = Operator.NotEqual;
+            if (current.data.isSymbol(lexer.TokenSymbol.Plus)) {
+                operator = Operator.Add;
+            } else if (current.data.isSymbol(lexer.TokenSymbol.Dash)) {
+                operator = Operator.Subtract;
             } else {
                 break;
             }
@@ -1244,10 +1236,18 @@ pub const Parser = struct {
 
         while (self.getCurrent()) |current| {
             var operator: Operator = undefined;
-            if (current.data.isKeyword(lexer.TokenKeyword.And)) {
-                operator = Operator.And;
-            } else if (current.data.isKeyword(lexer.TokenKeyword.Or)) {
-                operator = Operator.Or;
+            if (current.data.isSymbol(lexer.TokenSymbol.RightAngle)) {
+                operator = Operator.Greater;
+            } else if (current.data.isSymbol(lexer.TokenSymbol.RightAngleEqual)) {
+                operator = Operator.GreaterOrEqual;
+            } else if (current.data.isSymbol(lexer.TokenSymbol.LeftAngle)) {
+                operator = Operator.Less;
+            } else if (current.data.isSymbol(lexer.TokenSymbol.LeftAngleEqual)) {
+                operator = Operator.LessOrEqual;
+            } else if (current.data.isSymbol(lexer.TokenSymbol.DoubleEqual)) {
+                operator = Operator.Equal;
+            } else if (current.data.isSymbol(lexer.TokenSymbol.ExclamationMarkEqual)) {
+                operator = Operator.NotEqual;
             } else {
                 break;
             }
@@ -1271,7 +1271,39 @@ pub const Parser = struct {
         return lhs;
     }
 
-    const parseExpr = parseExpr4;
+    fn parseExpr5(self: *Parser) Node {
+        var lhs = self.parseExpr4();
+
+        while (self.getCurrent()) |current| {
+            var operator: Operator = undefined;
+            if (current.data.isKeyword(lexer.TokenKeyword.And)) {
+                operator = Operator.And;
+            } else if (current.data.isKeyword(lexer.TokenKeyword.Or)) {
+                operator = Operator.Or;
+            } else {
+                break;
+            }
+            self.advance();
+            const rhs = self.parseExpr4();
+
+            var lhs_alloc = self.allocator.create(Node) catch unreachable;
+            lhs_alloc.* = lhs;
+            var rhs_alloc = self.allocator.create(Node) catch unreachable;
+            rhs_alloc.* = rhs;
+
+            lhs = Node {
+                .BinaryOperation = . {
+                    .lhs = lhs_alloc,
+                    .operator = operator,
+                    .rhs = rhs_alloc
+                }
+            };
+        }
+
+        return lhs;
+    }
+
+    const parseExpr = parseExpr5;
 
     fn handleConstant(self: *Parser, value: lexer.TokenConstant) Node {
         _ = self;
