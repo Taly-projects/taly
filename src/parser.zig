@@ -15,35 +15,35 @@ pub const ValueNode = union(ValueNodeTag) {
     Float: []const u8,
     Bool: bool,
 
-    pub fn writeXML(self: *const ValueNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const ValueNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         switch (self.*) {
             .String => |str| {
                 // Add tabs
                 var i: usize = 0;
                 while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-                return std.fmt.format(writer, "<string>{s}</string>\n", .{str});
+                return std.fmt.format(writer, "<string id=\"{d}\">{s}</string>\n", .{id, str});
             },
             .Int => |num| {
                 // Add tabs
                 var i: usize = 0;
                 while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-                return std.fmt.format(writer, "<int>{s}</int>\n", .{num});
+                return std.fmt.format(writer, "<int id=\"{d}\">{s}</int>\n", .{id, num});
             },
             .Float => |num| {
                 // Add tabs
                 var i: usize = 0;
                 while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-                return std.fmt.format(writer, "<float>{s}</float>\n", .{num});
+                return std.fmt.format(writer, "<float id=\"{d}\">{s}</float>\n", .{id, num});
             },
             .Bool => |b| {
                 // Add tabs
                 var i: usize = 0;
                 while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-                return std.fmt.format(writer, "<bool>{}</bool>\n", .{b});
+                return std.fmt.format(writer, "<bool id=\"{d}\">{}</bool>\n", .{id, b});
             },
         }
     }
@@ -59,7 +59,7 @@ pub const FunctionDefinitionParameter = struct {
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try writer.writeAll("<parameter>\n");
+        try std.fmt.format(writer, "<parameter>\n", .{});
 
         // Add tabs (+ 1)
         i = 0;
@@ -92,12 +92,12 @@ pub const FunctionDefinitionNode = struct {
     constructor: bool,
     body: NodeList,
 
-    pub fn writeXML(self: *const FunctionDefinitionNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const FunctionDefinitionNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try writer.writeAll("<function-def>\n");
+        try std.fmt.format(writer, "<function-def id=\"{d}\">\n", .{id});
 
         // Add tabs (+ 1)
         i = 0;
@@ -173,12 +173,12 @@ pub const FunctionCallNode = struct {
     name: []const u8,
     parameters: NodeList,
 
-    pub fn writeXML(self: *const FunctionCallNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const FunctionCallNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try writer.writeAll("<function-call>\n");
+        try std.fmt.format(writer, "<function-call id=\"{d}\">\n", .{id});
 
         // Add tabs (+ 1)
         i = 0;
@@ -215,12 +215,12 @@ pub const FunctionCallNode = struct {
 pub const UseNode = struct {
     path: []const u8,
 
-    pub fn writeXML(self: *const UseNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const UseNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try writer.writeAll("<use>\n");
+        try std.fmt.format(writer, "<use id=\"{d}\">\n", .{id});
 
         // Add tabs
         i = 0;
@@ -238,12 +238,12 @@ pub const UseNode = struct {
 pub const ReturnNode = struct {
     value: ?*Node,
 
-    pub fn writeXML(self: *const ReturnNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const ReturnNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try writer.writeAll("<return>\n");
+        try std.fmt.format(writer, "<return id=\"{d}\">\n", .{id});
 
         if (self.value) |value| {
             try value.writeXML(writer, tabs + 1);
@@ -263,12 +263,12 @@ pub const VariableDefinitionNode = struct {
     data_type: []const u8,
     value: ?*Node,
 
-    pub fn writeXML(self: *const VariableDefinitionNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const VariableDefinitionNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try writer.writeAll("<variable-def>\n");
+        try std.fmt.format(writer, "<variable-def id=\"{d}\">\n", .{id});
 
         // Add tabs (+ 1)
         i = 0;
@@ -315,12 +315,12 @@ pub const VariableDefinitionNode = struct {
 pub const VariableCallNode = struct {
     name: []const u8,
 
-    pub fn writeXML(self: *const VariableCallNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const VariableCallNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try std.fmt.format(writer, "<variable-call>{s}</variable-call>\n", .{self.name});
+        try std.fmt.format(writer, "<variable-call id=\"{d}\">{s}</variable-call>\n", .{id, self.name});
     }
 };
 
@@ -373,12 +373,12 @@ pub const BinaryOperationNode = struct {
     operator: Operator,
     rhs: *Node,
 
-    pub fn writeXML(self: *const BinaryOperationNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const BinaryOperationNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
         
-        try writer.writeAll("<bin-op>\n");
+        try std.fmt.format(writer, "<bin-op id=\"{d}\">\n", .{id});
 
         // Add tabs
         i = 0;
@@ -423,12 +423,12 @@ pub const UnaryOperationNode = struct {
     operator: Operator,
     value: *Node,
 
-    pub fn writeXML(self: *const UnaryOperationNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const UnaryOperationNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
         
-        try writer.writeAll("<unary-op>\n");
+        try std.fmt.format(writer, "<unary-op id=\"{d}\">\n", .{id});
 
         try self.operator.writeXML(writer, tabs + 1);
 
@@ -511,12 +511,12 @@ pub const IfNode = struct {
     elif_branches: IfBranchList,
     else_body: NodeList,
 
-    pub fn writeXML(self: *const IfNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const IfNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
         
-        try writer.writeAll("<if>\n");
+        try std.fmt.format(writer, "<if id=\"{d}\">\n", .{id});
 
         try self.if_branch.writeXML(writer, tabs + 1);
 
@@ -555,12 +555,12 @@ pub const WhileNode = struct {
     condition: *Node,
     body: NodeList,
 
-    pub fn writeXML(self: *const WhileNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const WhileNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
         
-        try writer.writeAll("<while>\n");
+        try std.fmt.format(writer, "<while id=\"{d}\">\n", .{id});
 
         // Add tabs
         i = 0;
@@ -604,12 +604,12 @@ pub const WhileNode = struct {
 pub const LabelNode = struct {
     label: []const u8,
 
-    pub fn writeXML(self: *const LabelNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const LabelNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
         
-        try std.fmt.format(writer, "<label>{s}</label>\n", .{self.label});
+        try std.fmt.format(writer, "<label id=\"{d}\">{s}</label>\n", .{id, self.label});
     }    
 
 };
@@ -617,12 +617,12 @@ pub const LabelNode = struct {
 pub const ContinueNode = struct {
     label: ?[]const u8,
 
-    pub fn writeXML(self: *const ContinueNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const ContinueNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try writer.writeAll("<continue>");
+        try std.fmt.format(writer, "<continue id=\"{d}\">", .{id});
         if (self.label) |label| {
             try std.fmt.format(writer, "{s}", .{label});
         }
@@ -634,12 +634,12 @@ pub const ContinueNode = struct {
 pub const BreakNode = struct {
     label: ?[]const u8,
 
-    pub fn writeXML(self: *const BreakNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const BreakNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try writer.writeAll("<break>");
+        try std.fmt.format(writer, "<break id=\"{d}\">", .{id});
         if (self.label) |label| {
             try std.fmt.format(writer, "{s}", .{label});
         }
@@ -653,12 +653,12 @@ pub const MatchStatement = struct {
     branches: IfBranchList,
     else_body: NodeList,
 
-    pub fn writeXML(self: *const MatchStatement, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const MatchStatement, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try writer.writeAll("<match>\n");
+        try std.fmt.format(writer, "<match id=\"{d}\">\n", .{id});
 
         // Add tabs
         i = 0;
@@ -720,12 +720,12 @@ pub const ClassNode = struct {
     name: []const u8,
     body: NodeList,
 
-    pub fn writeXML(self: *const ClassNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const ClassNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try writer.writeAll("<class>\n");
+        try std.fmt.format(writer, "<class id=\"{d}\">\n", .{id});
 
         // Add tabs
         i = 0;
@@ -763,12 +763,12 @@ pub const ClassNode = struct {
 pub const CI_PureCNode = struct {
     code: []const u8,
 
-    pub fn writeXML(self: *const CI_PureCNode, writer: anytype, tabs: usize) anyerror!void {
+    pub fn writeXML(self: *const CI_PureCNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
         // Add tabs
         var i: usize = 0;
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
-        try std.fmt.format(writer, "<ci-pure-c>{s}</ci-pure-c>\n", .{self.code});
+        try std.fmt.format(writer, "<ci-pure-c id=\"{d}\">{s}</ci-pure-c>\n", .{id, self.code});
     }
 };
 
@@ -792,7 +792,7 @@ pub const NodeTag = enum {
     CI_PureC,
 };
 
-pub const Node = union(NodeTag) {
+pub const NodeData = union(NodeTag) {
     Value: ValueNode,
     FunctionDefinition: FunctionDefinitionNode,
     FunctionCall: FunctionCallNode,
@@ -811,29 +811,33 @@ pub const Node = union(NodeTag) {
     Class: ClassNode,
     CI_PureC: CI_PureCNode,
 
-    pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
+    pub fn makeNode(self: NodeData) Node {
+        return Node.gen(self);
+    } 
+
+    pub fn writeXML(self: *const NodeData, writer: anytype, tabs: usize, id: usize) anyerror!void {
         switch (self.*) {
-            .Value => |node| return node.writeXML(writer, tabs),
-            .FunctionDefinition => |node| return node.writeXML(writer, tabs),
-            .FunctionCall => |node| return node.writeXML(writer, tabs),
-            .Use => |node| return node.writeXML(writer, tabs),
-            .Return => |node| return node.writeXML(writer, tabs),
-            .VariableDefinition => |node| return node.writeXML(writer, tabs),
-            .VariableCall => |node| return node.writeXML(writer, tabs),
-            .BinaryOperation => |node| return node.writeXML(writer, tabs),
-            .UnaryOperation => |node| return node.writeXML(writer, tabs),
-            .If => |node| return node.writeXML(writer, tabs),
-            .While => |node| return node.writeXML(writer, tabs),
-            .Label => |node| return node.writeXML(writer, tabs),
-            .Continue => |node| return node.writeXML(writer, tabs),
-            .Break => |node| return node.writeXML(writer, tabs),
-            .Match => |node| return node.writeXML(writer, tabs),
-            .Class => |node| return node.writeXML(writer, tabs),
-            .CI_PureC => |node| return node.writeXML(writer, tabs),
+            .Value => |node| return node.writeXML(writer, tabs, id),
+            .FunctionDefinition => |node| return node.writeXML(writer, tabs, id),
+            .FunctionCall => |node| return node.writeXML(writer, tabs, id),
+            .Use => |node| return node.writeXML(writer, tabs, id),
+            .Return => |node| return node.writeXML(writer, tabs, id),
+            .VariableDefinition => |node| return node.writeXML(writer, tabs, id),
+            .VariableCall => |node| return node.writeXML(writer, tabs, id),
+            .BinaryOperation => |node| return node.writeXML(writer, tabs, id),
+            .UnaryOperation => |node| return node.writeXML(writer, tabs, id),
+            .If => |node| return node.writeXML(writer, tabs, id),
+            .While => |node| return node.writeXML(writer, tabs, id),
+            .Label => |node| return node.writeXML(writer, tabs, id),
+            .Continue => |node| return node.writeXML(writer, tabs, id),
+            .Break => |node| return node.writeXML(writer, tabs, id),
+            .Match => |node| return node.writeXML(writer, tabs, id),
+            .Class => |node| return node.writeXML(writer, tabs, id),
+            .CI_PureC => |node| return node.writeXML(writer, tabs, id),
         }
     }
 
-    pub fn format(self: *const Node, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
+    pub fn format(self: *const NodeData, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         _ = options;
         _ = fmt;
 
@@ -861,7 +865,50 @@ pub const Node = union(NodeTag) {
     }
 };
 
+pub const Node = struct {
+    var ID: usize = 0;
+
+    data: NodeData,
+    id: usize,
+
+    pub fn gen(data: NodeData) Node {
+        const self = Node {
+            .data = data,
+            .id = ID
+        };
+        ID += 1;
+        return self;
+    }
+
+    pub fn writeXML(self: *const Node, writer: anytype, tabs: usize) anyerror!void {
+        return self.data.writeXML(writer, tabs, self.id);
+    }
+
+    pub fn format(self: *const Node, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
+        return self.data.format(fmt, options, writer);
+    }
+};
+
 pub const NodeList = std.ArrayList(Node);
+
+pub const NodeInfo = struct {
+    node_id: usize,
+    position: position.Positioned(void),
+
+    pub fn writeXML(self: *const NodeInfo, writer: anytype) anyerror!void {
+        try std.fmt.format(writer, "<node-info id=\"{d}\">\n", .{self.node_id});
+        
+        try writer.writeAll("\t<position>\n");
+        try std.fmt.format(writer, "\t\t<start line=\"{d}\" column=\"{d}\"/>\n", .{self.position.start.line + 1, self.position.start.column_index + 1});
+        try std.fmt.format(writer, "\t\t<end line=\"{d}\" column=\"{d}\"/>\n", .{self.position.end.line + 1, self.position.end.column_index + 1});
+        try writer.writeAll("\t</position>\n");
+
+        try writer.writeAll("</node-info>\n");
+    }
+
+};
+
+pub const NodeInfos = std.ArrayList(NodeInfo);
 
 pub const Parser = struct {
     file_name: []const u8,
@@ -870,13 +917,16 @@ pub const Parser = struct {
     tokens: lexer.TokenList,
     index: usize = 0,
     tabs: usize = 0,
+    infos: NodeInfos,
 
     pub fn init(file_name: []const u8, src: []const u8, tokens: lexer.TokenList, allocator: std.mem.Allocator) Parser {
+        const infos = NodeInfos.init(allocator);
         return . {
             .file_name = file_name,
             .src = src,
             .allocator = allocator,
             .tokens = tokens,
+            .infos = infos
         };
     }
 
@@ -967,7 +1017,15 @@ pub const Parser = struct {
         self.index += 1;
     }
 
-    fn parseFunctionDefinition(self: *Parser, external: bool, constructor: bool) Node {
+    fn get_infos(self: *Parser, id: usize) *NodeInfo {
+        for (self.infos.items) |*info| {
+            if (info.node_id == id) return info;
+        }
+
+        unreachable;
+    }
+
+    fn parseFunctionDefinition(self: *Parser, external: bool, constructor: bool, start: position.Position) Node {
         self.advance();
         const id = self.expectIdentifier();
         self.advance();
@@ -993,6 +1051,7 @@ pub const Parser = struct {
             }) catch unreachable;
             current = self.expectCurrent(")");
         }
+        var end = self.getCurrent().?.end;
         self.advance();
 
         var return_type: ?[]const u8 = null;
@@ -1001,6 +1060,7 @@ pub const Parser = struct {
             if (current.data.isSymbol(lexer.TokenSymbol.Colon)) {
                 self.advance();
                 return_type = self.expectIdentifier();
+                end = self.getCurrent().?.end;
                 self.advance();
             }
         }
@@ -1010,6 +1070,7 @@ pub const Parser = struct {
         if (self.getCurrent() != null) {
             current = self.getCurrent().?;
             if (current.data.isSymbol(lexer.TokenSymbol.RightDoubleArrow)) {
+                end = self.getCurrent().?.end;
                 self.advance();
                 last_index = self.index;
                 self.tabs += 1;
@@ -1027,6 +1088,10 @@ pub const Parser = struct {
                     } else if (first or tab_count >= self.tabs) {
                         const node = self.parseCurrent();
                         body.append(node) catch unreachable;
+                        
+                        // Update end position
+                        end = self.get_infos(node.id).position.end;
+
                         last_index = self.index;
                     } else {
                         break;
@@ -1037,7 +1102,7 @@ pub const Parser = struct {
         }
         self.index = last_index;
 
-        return . {
+        const node = Node.gen(NodeData {
             .FunctionDefinition = . {
                 .name = id,
                 .parameters = parameters,
@@ -1046,7 +1111,15 @@ pub const Parser = struct {
                 .constructor = constructor,
                 .body = body
             }
-        };
+        });
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
     fn parseValue(self: *Parser) Node {
@@ -1056,45 +1129,89 @@ pub const Parser = struct {
             .Identifier => |id| return self.handleIdentifier(id),
             .Keyword => |keyword| {
                 if (keyword == lexer.TokenKeyword.Not) {
+                    const start = current.start;
                     self.advance();
                     var value = self.allocator.create(Node) catch unreachable;
-                    value.* = self.parseExpr();
-                    return Node {
+                    value.* = self.parseValue();
+                    const node = Node.gen(NodeData {
                         .UnaryOperation = .{
                             .operator = .Not,
                             .value = value
                         }
-                    };
+                    });
+
+                    // Get positions
+                    const end = self.get_infos(value.id).position.end;
+
+                    // Generate node informations
+                    self.infos.append(NodeInfo {
+                        .node_id = node.id,
+                        .position = position.Positioned(void).init(void {}, start, end)
+                    }) catch unreachable;
+
+                    return node;
                 } else {
                     current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data}, self.src, self.file_name);
                 }
             },
             .Symbol => |symbol| {
                 if (symbol == lexer.TokenSymbol.LeftParenthesis) {
+                    const start = current.start;
                     self.advance();
                     const expr = self.parseExpr();
                     self.expectSymbol(lexer.TokenSymbol.RightParenthesis);
+                    const end = self.getCurrent().?.end;
+
+                    // Generate node informations
+                    const pos = &self.get_infos(expr.id).position;
+                    pos.start = start;
+                    pos.end = end;
+
                     return expr;
                 } else if (symbol == lexer.TokenSymbol.Plus) {
+                    const start = current.start;
                     self.advance();
                     var value = self.allocator.create(Node) catch unreachable;
                     value.* = self.parseExpr();
-                    return Node {
+                    const node = Node.gen(NodeData {
                         .UnaryOperation = .{
                             .operator = .Add,
                             .value = value
                         }
-                    };
+                    });
+
+                    // Get positions
+                    const end = self.get_infos(value.id).position.end;
+
+                    // Generate node informations
+                    self.infos.append(NodeInfo {
+                        .node_id = node.id,
+                        .position = position.Positioned(void).init(void {}, start, end)
+                    }) catch unreachable;
+
+                    return node;
                 } else if (symbol == lexer.TokenSymbol.Dash) {
+                    const start = current.start;
                     self.advance();
                     var value = self.allocator.create(Node) catch unreachable;
                     value.* = self.parseExpr();
-                    return Node {
+                    const node = Node.gen(NodeData {
                         .UnaryOperation = .{
                             .operator = .Subtract,
                             .value = value
                         }
-                    };
+                    });
+
+                    // Get positions
+                    const end = self.get_infos(value.id).position.end;
+
+                    // Generate node informations
+                    self.infos.append(NodeInfo {
+                        .node_id = node.id,
+                        .position = position.Positioned(void).init(void {}, start, end)
+                    }) catch unreachable;
+
+                    return node;
                 } else {
                     current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data}, self.src, self.file_name);
                 }
@@ -1125,13 +1242,23 @@ pub const Parser = struct {
             var rhs_alloc = self.allocator.create(Node) catch unreachable;
             rhs_alloc.* = rhs;
 
-            lhs = Node {
+            lhs = Node.gen(NodeData {
                 .BinaryOperation = . {
                     .lhs = lhs_alloc,
                     .operator = operator,
                     .rhs = rhs_alloc
                 }
-            };
+            });
+
+            // Get positions
+            const start = self.get_infos(lhs_alloc.id).position.start;
+            const end = self.get_infos(rhs_alloc.id).position.end;
+        
+            // Generate node informations
+            self.infos.append(NodeInfo {
+                .node_id = lhs.id,
+                .position = position.Positioned(void).init(void {}, start, end)
+            }) catch unreachable;
         }
 
         return lhs;
@@ -1155,13 +1282,23 @@ pub const Parser = struct {
             var rhs_alloc = self.allocator.create(Node) catch unreachable;
             rhs_alloc.* = rhs;
 
-            lhs = Node {
+            lhs = Node.gen(NodeData {
                 .BinaryOperation = . {
                     .lhs = lhs_alloc,
                     .operator = operator,
                     .rhs = rhs_alloc
                 }
-            };
+            });
+
+            // Get positions
+            const start = self.get_infos(lhs_alloc.id).position.start;
+            const end = self.get_infos(rhs_alloc.id).position.end;
+        
+            // Generate node informations
+            self.infos.append(NodeInfo {
+                .node_id = lhs.id,
+                .position = position.Positioned(void).init(void {}, start, end)
+            }) catch unreachable;
         }
 
         return lhs;
@@ -1187,13 +1324,23 @@ pub const Parser = struct {
             var rhs_alloc = self.allocator.create(Node) catch unreachable;
             rhs_alloc.* = rhs;
 
-            lhs = Node {
+            lhs = Node.gen(NodeData {
                 .BinaryOperation = . {
                     .lhs = lhs_alloc,
                     .operator = operator,
                     .rhs = rhs_alloc
                 }
-            };
+            });
+
+            // Get positions
+            const start = self.get_infos(lhs_alloc.id).position.start;
+            const end = self.get_infos(rhs_alloc.id).position.end;
+        
+            // Generate node informations
+            self.infos.append(NodeInfo {
+                .node_id = lhs.id,
+                .position = position.Positioned(void).init(void {}, start, end)
+            }) catch unreachable;
         }
 
         return lhs;
@@ -1219,13 +1366,23 @@ pub const Parser = struct {
             var rhs_alloc = self.allocator.create(Node) catch unreachable;
             rhs_alloc.* = rhs;
 
-            lhs = Node {
+            lhs = Node.gen(NodeData {
                 .BinaryOperation = . {
                     .lhs = lhs_alloc,
                     .operator = operator,
                     .rhs = rhs_alloc
                 }
-            };
+            });
+
+            // Get positions
+            const start = self.get_infos(lhs_alloc.id).position.start;
+            const end = self.get_infos(rhs_alloc.id).position.end;
+        
+            // Generate node informations
+            self.infos.append(NodeInfo {
+                .node_id = lhs.id,
+                .position = position.Positioned(void).init(void {}, start, end)
+            }) catch unreachable;
         }
 
         return lhs;
@@ -1259,13 +1416,23 @@ pub const Parser = struct {
             var rhs_alloc = self.allocator.create(Node) catch unreachable;
             rhs_alloc.* = rhs;
 
-            lhs = Node {
+            lhs = Node.gen (NodeData {
                 .BinaryOperation = . {
                     .lhs = lhs_alloc,
                     .operator = operator,
                     .rhs = rhs_alloc
                 }
-            };
+            });
+
+            // Get positions
+            const start = self.get_infos(lhs_alloc.id).position.start;
+            const end = self.get_infos(rhs_alloc.id).position.end;
+        
+            // Generate node informations
+            self.infos.append(NodeInfo {
+                .node_id = lhs.id,
+                .position = position.Positioned(void).init(void {}, start, end)
+            }) catch unreachable;
         }
 
         return lhs;
@@ -1291,13 +1458,24 @@ pub const Parser = struct {
             var rhs_alloc = self.allocator.create(Node) catch unreachable;
             rhs_alloc.* = rhs;
 
-            lhs = Node {
+            // Generate node
+            lhs = Node.gen(NodeData {
                 .BinaryOperation = . {
                     .lhs = lhs_alloc,
                     .operator = operator,
                     .rhs = rhs_alloc
                 }
-            };
+            });
+
+            // Get positions
+            const start = self.get_infos(lhs_alloc.id).position.start;
+            const end = self.get_infos(rhs_alloc.id).position.end;
+        
+            // Generate node informations
+            self.infos.append(NodeInfo {
+                .node_id = lhs.id,
+                .position = position.Positioned(void).init(void {}, start, end)
+            }) catch unreachable;
         }
 
         return lhs;
@@ -1306,40 +1484,88 @@ pub const Parser = struct {
     const parseExpr = parseExpr5;
 
     fn handleConstant(self: *Parser, value: lexer.TokenConstant) Node {
-        _ = self;
         switch (value) {
             .String => |str| {
-                return Node {
+                // Generate node
+                const node = Node.gen(NodeData {
                     .Value = . {
                         .String = str
                     }
-                };
+                });
+
+                // Get position
+                const start = self.getCurrent().?.start;
+                const end = self.getCurrent().?.end;
+
+                // Generate node informations
+                self.infos.append(NodeInfo {
+                    .node_id = node.id,
+                    .position = position.Positioned(void).init(void {}, start, end)
+                }) catch unreachable;
+
+                return node;
             },
             .Int => |num| {
-                return Node {
+                const node = Node.gen(NodeData {
                     .Value = . {
                         .Int = num
                     }
-                };
+                });
+
+                // Get position
+                const start = self.getCurrent().?.start;
+                const end = self.getCurrent().?.end;
+
+                // Generate node informations
+                self.infos.append(NodeInfo {
+                    .node_id = node.id,
+                    .position = position.Positioned(void).init(void {}, start, end)
+                }) catch unreachable;
+
+                return node;
             },
             .Float => |num| {
-                return Node {
+                const node = Node.gen(NodeData {
                     .Value = . {
                         .Float = num
                     }
-                };
+                });
+
+                // Get position
+                const start = self.getCurrent().?.start;
+                const end = self.getCurrent().?.end;
+
+                // Generate node informations
+                self.infos.append(NodeInfo {
+                    .node_id = node.id,
+                    .position = position.Positioned(void).init(void {}, start, end)
+                }) catch unreachable;
+
+                return node;
             },
             .Bool => |b| {
-                return Node {
+                const node = Node.gen(NodeData {
                     .Value = . {
                         .Bool = b
                     }
-                };
+                });
+
+                // Get position
+                const start = self.getCurrent().?.start;
+                const end = self.getCurrent().?.end;
+
+                // Generate node informations
+                self.infos.append(NodeInfo {
+                    .node_id = node.id,
+                    .position = position.Positioned(void).init(void {}, start, end)
+                }) catch unreachable;
+
+                return node;
             },
         }
     }
 
-    fn parseFunctionCall(self: *Parser, id: []const u8) Node {
+    fn parseFunctionCall(self: *Parser, id: []const u8, start: position.Position) Node {
         self.advance();
         var parameters = NodeList.init(self.allocator);
         var current = self.expectCurrent(")");
@@ -1352,43 +1578,79 @@ pub const Parser = struct {
             parameters.append(expr) catch unreachable;
             current = self.expectCurrent(")");
         }
+        const end = self.getCurrent().?.end;
         
-        return Node {
+        // Generate node
+        const node = Node.gen(NodeData {
             .FunctionCall = .{
                 .name = id,
                 .parameters = parameters
             }
-        };
+        });
+
+        // Generate informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
     fn handleIdentifier(self: *Parser, id: []const u8) Node {
         if (self.peek(1)) |next| {
             if (next.data.isSymbol(lexer.TokenSymbol.LeftParenthesis)) {
+                const start = self.getCurrent().?.start;
                 self.advance();
-                return self.parseFunctionCall(id);
+                return self.parseFunctionCall(id, start);
             }
         }
 
-        return Node {
+        // Generate node
+        const node = Node.gen(NodeData {
             .VariableCall = . {
                 .name = id
             }
-        };
+        });
+
+        // Get start end end position
+        const start = self.getCurrent().?.start;
+        const end = self.getCurrent().?.end;
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
     fn parseUse(self: *Parser) Node {
+        const start = self.getCurrent().?.start;
         self.advance();
         const path = self.expectString();
+        const end = self.getCurrent().?.end;
         self.advance();
 
-        return Node {
+        const node = Node.gen(NodeData {
             .Use = .{
                 .path = path
             }
-        };
+        });
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
     fn parseReturn(self: *Parser) Node {
+        const start = self.getCurrent().?.start;
+        var end = self.getCurrent().?.end;
         self.advance();
 
         var value: ?*Node = null;
@@ -1396,25 +1658,38 @@ pub const Parser = struct {
             if (!current.data.isFormat(lexer.TokenFormat.NewLine)) {
                 value = self.allocator.create(Node) catch unreachable;
                 value.?.* = self.parseExpr();
+                
+                // Update end position
+                end = self.get_infos(value.?.id).position.end;
             }
         }
 
-        return Node {
+        const node = Node.gen(NodeData {
             .Return = .{
                 .value = value
             }
-        };
+        });
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
-    fn parseVariableDefinition(self: *Parser, constant: bool) Node {
+    fn parseVariableDefinition(self: *Parser, constant: bool, start: position.Position) Node {
         self.advance();
         const name = self.expectIdentifier();
+        var end = self.getCurrent().?.end;
         self.advance();
 
         // Expexcted because no inference for now!
         self.expectSymbol(lexer.TokenSymbol.Colon);
         self.advance();
         const data_type = self.expectIdentifier();
+        end = self.getCurrent().?.end;
         self.advance();
 
         var value: ?*Node = null;
@@ -1424,20 +1699,30 @@ pub const Parser = struct {
                 self.advance();
                 value = self.allocator.create(Node) catch unreachable;
                 value.?.* = self.parseExpr();
+                end = self.get_infos(value.?.id).position.end;
             }
         }
 
-        return Node {
+        const node = Node.gen(NodeData {
             .VariableDefinition = . {
                 .constant = constant,
                 .name = name,
                 .data_type = data_type,
                 .value = value
             }
-        };
+        });
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
     fn parseIfStatement(self: *Parser) Node {
+        const start = self.getCurrent().?.start;
         self.advance();
         var if_condition = self.allocator.create(Node) catch unreachable;
         if_condition.* = self.parseExpr();
@@ -1495,9 +1780,10 @@ pub const Parser = struct {
 
             current = self.expectCurrent("end");
         }
+        const end = self.getCurrent().?.end;
         self.advance();
 
-        return Node {
+        const node = Node.gen(NodeData {
             .If = IfNode {
                 .if_branch = IfBranch {
                     .condition = if_condition,
@@ -1506,10 +1792,19 @@ pub const Parser = struct {
                 .elif_branches = elif_branches,
                 .else_body = else_body
             }
-        };
+        });
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
     fn parseWhileLoop(self: *Parser) Node {
+        const start = self.getCurrent().?.start;
         self.advance();
         var condition = self.allocator.create(Node) catch unreachable;
         condition.* = self.parseExpr();
@@ -1529,57 +1824,90 @@ pub const Parser = struct {
             }
         }
         self.tabs -= 1;
+        const end = self.getCurrent().?.end;
         self.advance();
 
-        return Node {
+        const node = Node.gen(NodeData {
             .While = WhileNode {
                 .condition = condition,
                 .body = body
             }
-        };
+        });
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+        
+
+        return node;
     }
 
     fn parseContinue(self: *Parser) Node {
+        const start = self.getCurrent().?.start;
+        var end = self.getCurrent().?.end;
         self.advance();
         var label: ?[]const u8 = null;
         if (self.getCurrent()) |token| {
             switch (token.data) {
                 .Label => |lbl| {
                     label = lbl;
+                    end = token.end;
                     self.advance();
                 },
                 else => {}
             }
         }
 
-        return Node {
+        const node = Node.gen(NodeData {
             .Continue = ContinueNode {
                 .label = label
             }
-        };
+        });
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
     fn parseBreak(self: *Parser) Node {
+        const start = self.getCurrent().?.start;
+        var end = self.getCurrent().?.end;
         self.advance();
         var label: ?[]const u8 = null;
         if (self.getCurrent()) |token| {
             switch (token.data) {
                 .Label => |lbl| {
                     label = lbl;
+                    end = token.end;
                     self.advance();
                 },
                 else => {}
             }
         }
 
-        return Node {
+        const node = Node.gen(NodeData {
             .Break = BreakNode {
                 .label = label
             }
-        };
+        });
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
     fn parseMatch(self: *Parser) Node {
+        const start = self.getCurrent().?.start;
         self.advance();
         var condition = self.allocator.create(Node) catch unreachable;
         condition.* = self.parseExpr();
@@ -1654,20 +1982,31 @@ pub const Parser = struct {
             }
         }
         self.tabs -= 1;
+        const end = self.getCurrent().?.end;
         self.advance();
 
-        return Node {
+        const node = Node.gen(NodeData {
             .Match = MatchStatement {
                 .condition = condition,
                 .branches = branches,
                 .else_body = else_body,
             }
-        };
+        });
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
     fn parseClass(self:* Parser) Node {
+        const start = self.getCurrent().?.start;
         self.advance();
         const name = self.expectIdentifier();
+        var end = self.getCurrent().?.end;
         self.advance();
         self.tabs += 1;
         var tab_count: usize = 0;
@@ -1687,6 +2026,7 @@ pub const Parser = struct {
                 const node = self.parseCurrent();
                 body.append(node) catch unreachable;
                 last_index = self.index;
+                end = self.get_infos(node.id).position.end;
             } else {
                 break;
             }
@@ -1694,26 +2034,35 @@ pub const Parser = struct {
         self.tabs -= 1;
         self.index = last_index;
 
-        return Node {
+        const node = Node.gen(NodeData {
             .Class = ClassNode {
                 .name = name,
                 .body = body
             }
-        };
+        });
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
+        const start = self.getCurrent().?.start;
         switch (keyword) {
-            .Fn => return self.parseFunctionDefinition(false, false),
+            .Fn => return self.parseFunctionDefinition(false, false, start),
             .Extern => {
                 self.advance();
                 self.expectExactKeyword(lexer.TokenKeyword.Fn);
-                return self.parseFunctionDefinition(true, false);
+                return self.parseFunctionDefinition(true, false, start);
             },
             .Use => return self.parseUse(),
             .Return => return self.parseReturn(),
-            .Const => return self.parseVariableDefinition(true),
-            .Var => return self.parseVariableDefinition(false),
+            .Const => return self.parseVariableDefinition(true, start),
+            .Var => return self.parseVariableDefinition(false, start),
             .Not => return self.parseExpr(),
             .If => return self.parseIfStatement(),
             .While => return self.parseWhileLoop(),
@@ -1721,7 +2070,7 @@ pub const Parser = struct {
             .Break => return self.parseBreak(),
             .Match => return self.parseMatch(),
             .Class => return self.parseClass(),
-            .New => return self.parseFunctionDefinition(false, true),
+            .New => return self.parseFunctionDefinition(false, true, start),
             else => {
                 const current = self.getCurrent().?;
                 current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);
@@ -1730,14 +2079,26 @@ pub const Parser = struct {
     }
 
     fn parseLabel(self: *Parser, id: []const u8) Node {
+        const start = self.getCurrent().?.start;
         self.advance();
         self.expectSymbol(lexer.TokenSymbol.Colon);
+        const end = self.getCurrent().?.end;
         self.advance();
-        return Node {
+
+        // Generate node
+        const node = Node.gen(NodeData {
             .Label = LabelNode {
                 .label = id
             }
-        };
+        });
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
     }
 
     fn parseCurrent(self: *Parser) Node {
@@ -1761,7 +2122,7 @@ pub const Parser = struct {
         }
     }
 
-    pub fn parse(self: *Parser) NodeList {
+    pub fn parse(self: *Parser) struct { NodeList, NodeInfos} {
         var nodes = NodeList.init(self.allocator);
 
         while (self.getCurrent() != null) {
@@ -1770,6 +2131,9 @@ pub const Parser = struct {
             self.advance();
         }
 
-        return nodes;
+        return . {
+            nodes,
+            self.infos
+        };
     }
 };
