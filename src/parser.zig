@@ -2,6 +2,8 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const position = @import("position.zig");
 
+const symbol = @import("symbol.zig");
+
 pub const ValueNodeTag = enum {
     String,
     Int,
@@ -894,6 +896,7 @@ pub const NodeList = std.ArrayList(Node);
 pub const NodeInfo = struct {
     node_id: usize,
     position: position.Positioned(void),
+    symbol_def: ?usize = null,
 
     pub fn writeXML(self: *const NodeInfo, writer: anytype) anyerror!void {
         try std.fmt.format(writer, "<node-info id=\"{d}\">\n", .{self.node_id});
@@ -902,6 +905,10 @@ pub const NodeInfo = struct {
         try std.fmt.format(writer, "\t\t<start line=\"{d}\" column=\"{d}\"/>\n", .{self.position.start.line + 1, self.position.start.column_index + 1});
         try std.fmt.format(writer, "\t\t<end line=\"{d}\" column=\"{d}\"/>\n", .{self.position.end.line + 1, self.position.end.column_index + 1});
         try writer.writeAll("\t</position>\n");
+
+        if (self.symbol_def) |symbol_def| {
+            try std.fmt.format(writer, "\t<symbol-def symbol-id=\"{d}\"/>\n", .{symbol_def});
+        }
 
         try writer.writeAll("</node-info>\n");
     }
@@ -918,15 +925,18 @@ pub const Parser = struct {
     index: usize = 0,
     tabs: usize = 0,
     infos: NodeInfos,
+    symbols: symbol.SymbolList,
 
     pub fn init(file_name: []const u8, src: []const u8, tokens: lexer.TokenList, allocator: std.mem.Allocator) Parser {
         const infos = NodeInfos.init(allocator);
+        const symbols = symbol.SymbolList.init(allocator);
         return . {
             .file_name = file_name,
             .src = src,
             .allocator = allocator,
             .tokens = tokens,
-            .infos = infos
+            .infos = infos,
+            .symbols = symbols,
         };
     }
 
@@ -975,9 +985,9 @@ pub const Parser = struct {
         }
     }
 
-    fn expectSymbol(self: *const Parser, symbol: lexer.TokenSymbol) void {
+    fn expectSymbol(self: *const Parser, sym: lexer.TokenSymbol) void {
         if (self.getCurrent()) |token| {
-            if (!token.data.isSymbol(symbol)) {
+            if (!token.data.isSymbol(sym)) {
                 token.errorMessage("Unexpected token '{full}', should be '{}'!", .{token.data, symbol}, self.src, self.file_name);
             }
         } else {
@@ -1065,6 +1075,19 @@ pub const Parser = struct {
             }
         }
 
+        // Generate symbol
+        const sym_count = self.symbols.items.len;
+        const sym = symbol.Symbol.gen(symbol.SymbolData {
+            .Function = symbol.FunctionSymbol {
+                .external = external,
+                .name = id,
+                .parameters = parameters,
+                .return_type = return_type,
+                .children = symbol.SymbolList.init(self.allocator)
+            }
+        }, symbol.Symbol.NO_ID);
+        self.symbols.append(sym) catch unreachable;
+
         var body = NodeList.init(self.allocator);
         var last_index = self.index;
         if (self.getCurrent() != null) {
@@ -1113,10 +1136,23 @@ pub const Parser = struct {
             }
         });
 
+        // Update symbol ID
+        const symbol_ref = &self.symbols.items[sym_count];
+        symbol_ref.node_id = node.id;
+
+        // Pop all children
+        var i: usize = self.symbols.items.len;
+        while (i > sym_count + 1) {
+            const child = self.symbols.pop();
+            symbol_ref.data.Class.children.append(child) catch unreachable;
+            i -= 1;
+        }
+
         // Generate node informations
         self.infos.append(NodeInfo {
             .node_id = node.id,
-            .position = position.Positioned(void).init(void {}, start, end)
+            .position = position.Positioned(void).init(void {}, start, end),
+            .symbol_def = sym.id
         }) catch unreachable;
 
         return node;
@@ -1154,8 +1190,8 @@ pub const Parser = struct {
                     current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data}, self.src, self.file_name);
                 }
             },
-            .Symbol => |symbol| {
-                if (symbol == lexer.TokenSymbol.LeftParenthesis) {
+            .Symbol => |sym| {
+                if (sym == lexer.TokenSymbol.LeftParenthesis) {
                     const start = current.start;
                     self.advance();
                     const expr = self.parseExpr();
@@ -1168,7 +1204,7 @@ pub const Parser = struct {
                     pos.end = end;
 
                     return expr;
-                } else if (symbol == lexer.TokenSymbol.Plus) {
+                } else if (sym == lexer.TokenSymbol.Plus) {
                     const start = current.start;
                     self.advance();
                     var value = self.allocator.create(Node) catch unreachable;
@@ -1190,7 +1226,7 @@ pub const Parser = struct {
                     }) catch unreachable;
 
                     return node;
-                } else if (symbol == lexer.TokenSymbol.Dash) {
+                } else if (sym == lexer.TokenSymbol.Dash) {
                     const start = current.start;
                     self.advance();
                     var value = self.allocator.create(Node) catch unreachable;
@@ -1712,10 +1748,22 @@ pub const Parser = struct {
             }
         });
 
+        // Generate symbol
+        const sym = symbol.Symbol.gen(symbol.SymbolData {
+            .Variable = symbol.VariableSymbol {
+                .name = name,
+                .data_type = data_type,
+                .constant = constant,
+                .initialized = value == null,
+            }
+        }, node.id);
+        self.symbols.append(sym) catch unreachable;
+
         // Generate node informations
         self.infos.append(NodeInfo {
             .node_id = node.id,
-            .position = position.Positioned(void).init(void {}, start, end)
+            .position = position.Positioned(void).init(void {}, start, end),
+            .symbol_def = sym.id,
         }) catch unreachable;
 
         return node;
@@ -2008,6 +2056,17 @@ pub const Parser = struct {
         const name = self.expectIdentifier();
         var end = self.getCurrent().?.end;
         self.advance();
+
+        // Generate symbol
+        const sym_count = self.symbols.items.len;
+        const sym = symbol.Symbol.gen(symbol.SymbolData {
+            .Class = symbol.ClassSymbol {
+                .name = name,
+                .children = symbol.SymbolList.init(self.allocator),
+            }
+        }, symbol.Symbol.NO_ID);
+        self.symbols.append(sym) catch unreachable;
+
         self.tabs += 1;
         var tab_count: usize = 0;
         var first = true;
@@ -2041,11 +2100,25 @@ pub const Parser = struct {
             }
         });
 
+        // Update symbol ID
+        const symbol_ref = &self.symbols.items[sym_count];
+        symbol_ref.node_id = node.id;
+
+        // Pop all children
+        var i: usize = self.symbols.items.len;
+        while (i > sym_count + 1) {
+            const child = self.symbols.pop();
+            symbol_ref.data.Class.children.append(child) catch unreachable;
+            i -= 1;
+        }
+
         // Generate node informations
         self.infos.append(NodeInfo {
             .node_id = node.id,
-            .position = position.Positioned(void).init(void {}, start, end)
+            .position = position.Positioned(void).init(void {}, start, end),
+            .symbol_def = sym.id
         }) catch unreachable;
+        
 
         return node;
     }
@@ -2110,8 +2183,8 @@ pub const Parser = struct {
                 self.advance();
                 return self.parseCurrent();
             },
-            .Symbol => |symbol| {
-                switch (symbol) {
+            .Symbol => |sym| {
+                switch (sym) {
                     .LeftParenthesis, .Plus, .Dash => return self.parseExpr(),
                     else => {
                         current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);
@@ -2122,7 +2195,7 @@ pub const Parser = struct {
         }
     }
 
-    pub fn parse(self: *Parser) struct { NodeList, NodeInfos} {
+    pub fn parse(self: *Parser) struct { NodeList, NodeInfos, symbol.SymbolList } {
         var nodes = NodeList.init(self.allocator);
 
         while (self.getCurrent() != null) {
@@ -2133,7 +2206,8 @@ pub const Parser = struct {
 
         return . {
             nodes,
-            self.infos
+            self.infos,
+            self.symbols,
         };
     }
 };
