@@ -759,6 +759,10 @@ pub const Translator = struct {
         // External functions nothing to do (only used to tell the compiler a function exists)..
         if (function_def.external) return nodes;
 
+        // Rename the function (if necessary)
+        const info = self.getInfo(node.id).?;
+        const name = if (info.renamed) |renamed| renamed else function_def.name;
+
         // Translate parameters
         var parameters = FunctionDefinitionParameters.init(self.allocator);
         for (function_def.parameters.items) |param| {
@@ -772,7 +776,7 @@ pub const Translator = struct {
         if (!std.mem.eql(u8, function_def.name, "main")) {
             self.header.append(Node {
                 .FunctionHeader = .{
-                    .name = function_def.name,
+                    .name = name,
                     .parameters = parameters,
                     .return_type = self.translateType(function_def.return_type orelse "void")
                 }
@@ -788,7 +792,7 @@ pub const Translator = struct {
         // Create translated node
         nodes.append(Node {
             .FunctionSource = .{
-                .name = function_def.name,
+                .name = name,
                 .parameters = parameters,
                 .return_type = self.translateType(function_def.return_type orelse "void"),
                 .body = body
@@ -803,6 +807,12 @@ pub const Translator = struct {
 
         const function_call = node.data.FunctionCall;
 
+        const info = self.getInfo(node.id).?;
+        const sym = self.getSymbol(info.symbol_call.?).?;
+
+        const sym_node_info = self.getInfo(sym.node_id).?;
+        const name = sym_node_info.renamed orelse node.data.FunctionCall.name;
+
         // Translate Parameters
         var parameters = NodeList.init(self.allocator);
         for (function_call.parameters.items) |param| {
@@ -814,7 +824,7 @@ pub const Translator = struct {
         // Create translated node
         nodes.append(Node {
             .FunctionCall = . {
-                .name = function_call.name,
+                .name = name,
                 .parameters = parameters
             }
         }) catch unreachable;
@@ -953,7 +963,15 @@ pub const Translator = struct {
                     
                     operator = .PointerAccess;
                 } else {
-                    operator = .Access;
+                    const rhs_info = self.getInfo(node.data.BinaryOperation.rhs.id).?;
+                    const rhs_sym = self.getSymbol(rhs_info.symbol_call.?).?;
+
+                    if (rhs_sym.data == parser.SymbolTag.Function) {
+                        nodes.append(rhs_node.*) catch unreachable;
+                        return nodes;   
+                    } else {
+                        operator = .Access;
+                    }
                 }
 
             },

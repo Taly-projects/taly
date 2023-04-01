@@ -73,8 +73,23 @@ pub const Scope = struct {
 
     pub fn getFunction(self: *const Scope, root: *const parser.SymbolList, name: []const u8) ?*parser.Symbol {
         if (self.entered) |entered| {
-            _ = entered;
-            // TODO: manage enetered
+            switch (entered.data) {
+                .Class => |class| {
+                    for (class.children.items) |*sym| {
+                        switch (sym.data) {
+                            .Function => |function| {
+                                if (std.mem.eql(u8, function.name, name)) {
+                                    return sym;
+                                }
+                            },
+                            else => {}
+                        }
+                    }
+                },
+                else => {}
+            } 
+
+            return null; 
         }
 
         if (self.scope) |scope| {
@@ -344,6 +359,7 @@ pub const Generator = struct {
         var body = parser.NodeList.init(self.allocator);
 
         // Check if method
+        var is_constructor = false;
         var parameters = parser.FunctionDefinitionParameters.init(self.allocator);
         if (self.scope.getParentClass()) |class| {
             // Add self parameter
@@ -351,6 +367,8 @@ pub const Generator = struct {
                 .name = "self",
                 .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable
             }) catch unreachable;
+
+            infos.renamed = std.mem.concat(self.allocator, u8, &[_][]const u8 {class.data.Class.name, "_", node.data.FunctionDefinition.name}) catch unreachable;
 
             if (node.data.FunctionDefinition.constructor) {
                 // Generate _self_data
@@ -368,6 +386,12 @@ pub const Generator = struct {
                     }
                 });
                 body.append(self_node) catch unreachable;
+
+                // Update return type
+                sym.data.Function.return_type = class.data.Class.name;
+                new_node.data.FunctionDefinition.return_type = class.data.Class.name;
+
+                is_constructor = true;
             }
         }
         parameters.appendSlice(node.data.FunctionDefinition.parameters.items) catch unreachable;
@@ -388,6 +412,22 @@ pub const Generator = struct {
         for (node.data.FunctionDefinition.body.items) |child| {
             body.append(self.generateNode(child)) catch unreachable;
         }
+
+        // Generate return
+        if (is_constructor) {
+            var returned_value = self.allocator.create(parser.Node) catch unreachable;
+            returned_value.* = parser.Node.gen(parser.NodeData {
+                .VariableCall = parser.VariableCallNode {
+                    .name = "_self_data"
+                }
+            });
+            body.append(parser.Node.gen(parser.NodeData {
+                .Return = parser.ReturnNode {
+                    .value = returned_value
+                }
+            })) catch unreachable;
+        }
+
         new_node.data.FunctionDefinition.body = body;
 
         // TODO: If main => set return type and add return statement (if not present)

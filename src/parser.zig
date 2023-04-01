@@ -901,6 +901,7 @@ pub const NodeInfo = struct {
     symbol_def: ?usize = null,
     symbol_call: ?usize = null,
     data_type: ?[]const u8 = null,
+    renamed: ?[]const u8 = null,
 
     pub fn writeXML(self: *const NodeInfo, writer: anytype) anyerror!void {
         try std.fmt.format(writer, "<node-info id=\"{d}\">\n", .{self.node_id});
@@ -920,6 +921,10 @@ pub const NodeInfo = struct {
 
         if (self.data_type) |data_type| {
             try std.fmt.format(writer, "\t<type>{s}</type>\n", .{data_type});
+        }
+
+        if (self.renamed) |renamed| {
+            try std.fmt.format(writer, "\t<renamed>{s}</renamed>\n", .{renamed});
         }
 
         try writer.writeAll("</node-info>\n");
@@ -1157,7 +1162,7 @@ pub const Parser = struct {
         var i: usize = self.symbols.items.len;
         while (i > sym_count + 1) {
             const child = self.symbols.pop();
-            symbol_ref.data.Class.children.append(child) catch unreachable;
+            symbol_ref.data.Function.children.append(child) catch unreachable;
             i -= 1;
         }
 
