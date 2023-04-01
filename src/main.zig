@@ -66,7 +66,7 @@ pub fn main() !void {
     const symbols = par_res.@"2";
 
     // Generator
-    var gen = generator.Generator.init(ast, infos, symbols, arena.allocator());
+    var gen = generator.Generator.init(path, src, ast, infos, symbols, arena.allocator());
     const gen_res = gen.generate();
     const gen_ast = gen_res.@"0";
     const gen_infos = gen_res.@"1";

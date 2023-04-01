@@ -256,6 +256,8 @@ pub const Scope = struct {
 };
 
 pub const Generator = struct {
+    file_name: []const u8,
+    src: []const u8,
     allocator: std.mem.Allocator,
     ast: parser.NodeList,
     infos: parser.NodeInfos,
@@ -263,8 +265,10 @@ pub const Generator = struct {
     scope: Scope = Scope{},
     index: usize = 0,
 
-    pub fn init(ast: parser.NodeList, infos: parser.NodeInfos, symbols: parser.SymbolList, allocator: std.mem.Allocator) Generator {
+    pub fn init(file_name: []const u8, src: []const u8, ast: parser.NodeList, infos: parser.NodeInfos, symbols: parser.SymbolList, allocator: std.mem.Allocator) Generator {
         return Generator {
+            .file_name = file_name,
+            .src = src,
             .allocator = allocator,
             .ast = ast,
             .infos = infos,
@@ -460,7 +464,8 @@ pub const Generator = struct {
 
         // Find function symbol
         const function_symbol = self.scope.getFunction(&self.symbols, node.data.FunctionCall.name) orelse {
-            @panic("todo");
+            const info = self.getInfo(node.id).?;
+            info.position.errorMessage("Function `{s}` not declared!", .{node.data.FunctionCall.name}, self.src, self.file_name);
         };
 
         // Check if parameters match (type + number)
@@ -584,8 +589,6 @@ pub const Generator = struct {
         // TODO: If Assignment check if lhs is assignable
         // TODO: else check if types match (later change to implementation)
         // TODO: Generate type info
-
-        // TODO: Only accept field capturing when using self
 
         var new_node = node;
 
