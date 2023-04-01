@@ -1,6 +1,6 @@
 use "std-stdio"
 
-extern fn printf(msg: c_string)
+extern fn printf(msg: c_string, param: c_string)
 
 class Person
     var name: c_string
@@ -10,8 +10,9 @@ class Person
         self.name = name
         self.age = age
 
-    fn sayHello() => printf("Hello\n")
+    fn sayHello() => printf("Hello I'm %s\n", self.name)
 
 # main function
 fn main() =>
-    const person: Person = Person.create("John", 12)
+    var person: Person = Person.create("John", 12)
+    person.sayHello()

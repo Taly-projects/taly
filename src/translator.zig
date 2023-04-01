@@ -568,6 +568,21 @@ pub const CI_PureCNode = struct {
     }
 };
 
+
+pub const CI_PreCNode = struct {
+    code: []const u8,
+    node: *Node,
+
+    pub fn writeC(self: *const CI_PreCNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "{s}", .{self.code});
+        return try self.node.writeC(writer, 0);
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionHeader,
@@ -586,6 +601,7 @@ pub const NodeTag = enum {
     Break,
     Struct,
     CI_PureC,
+    CI_PreC,
 };
 
 pub const Node = union(NodeTag) {
@@ -606,6 +622,7 @@ pub const Node = union(NodeTag) {
     Break: BreakNode,
     Struct: StructNode,
     CI_PureC: CI_PureCNode,
+    CI_PreC: CI_PreCNode,
 
     pub fn writeC(self: *const Node, writer: anytype, tabs: usize) anyerror!bool {
         switch (self.*) {
@@ -626,6 +643,7 @@ pub const Node = union(NodeTag) {
             .Break => |node| return node.writeC(writer, tabs),
             .Struct => |node| return node.writeC(writer, tabs),
             .CI_PureC => |node| return node.writeC(writer, tabs),
+            .CI_PreC => |node| return node.writeC(writer, tabs),
         }
     }
 
@@ -959,9 +977,24 @@ pub const Translator = struct {
                 const lhs_sym = self.getSymbol(lhs_info.symbol_call.?).?;
                 
                 if (lhs_sym.data == parser.SymbolTag.Variable) {
-                    // TODO: Check if rhs is function
-                    
-                    operator = .PointerAccess;
+                    const rhs_info = self.getInfo(node.data.BinaryOperation.rhs.id).?;
+                    const rhs_sym = self.getSymbol(rhs_info.symbol_call.?).?;
+
+                    if (rhs_sym.data == parser.SymbolTag.Function) {
+                        var parameters = NodeList.init(self.allocator);
+                        parameters.append(Node {
+                            .CI_PreC = CI_PreCNode {
+                                .code = "&",
+                                .node = lhs_node
+                            }
+                        }) catch unreachable;
+                        parameters.appendSlice(rhs_node.FunctionCall.parameters.items) catch unreachable;
+                        rhs_node.FunctionCall.parameters = parameters;
+                        nodes.append(rhs_node.*) catch unreachable;
+                        return nodes;   
+                    } else {
+                        operator = .PointerAccess;
+                    }
                 } else {
                     const rhs_info = self.getInfo(node.data.BinaryOperation.rhs.id).?;
                     const rhs_sym = self.getSymbol(rhs_info.symbol_call.?).?;

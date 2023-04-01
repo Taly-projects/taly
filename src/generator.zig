@@ -362,12 +362,6 @@ pub const Generator = struct {
         var is_constructor = false;
         var parameters = parser.FunctionDefinitionParameters.init(self.allocator);
         if (self.scope.getParentClass()) |class| {
-            // Add self parameter
-            parameters.append(parser.FunctionDefinitionParameter {
-                .name = "self",
-                .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable
-            }) catch unreachable;
-
             infos.renamed = std.mem.concat(self.allocator, u8, &[_][]const u8 {class.data.Class.name, "_", node.data.FunctionDefinition.name}) catch unreachable;
 
             if (node.data.FunctionDefinition.constructor) {
@@ -387,11 +381,26 @@ pub const Generator = struct {
                 });
                 body.append(self_node) catch unreachable;
 
+                self.addSymbol(parser.Symbol.gen(parser.SymbolData {
+                    .Variable = parser.VariableSymbol {
+                        .name = "self",
+                        .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable,
+                        .initialized = true,
+                        .constant = true,
+                    }
+                }, parser.Node.NO_ID));
+
                 // Update return type
                 sym.data.Function.return_type = class.data.Class.name;
                 new_node.data.FunctionDefinition.return_type = class.data.Class.name;
 
                 is_constructor = true;
+            } else {
+                // Add self parameter
+                parameters.append(parser.FunctionDefinitionParameter {
+                    .name = "self",
+                    .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable
+                }) catch unreachable;
             }
         }
         parameters.appendSlice(node.data.FunctionDefinition.parameters.items) catch unreachable;
@@ -407,6 +416,7 @@ pub const Generator = struct {
                 }
             }, parser.Node.NO_ID));
         }
+        new_node.data.FunctionDefinition.parameters = parameters;
 
         // Check body
         for (node.data.FunctionDefinition.body.items) |child| {
