@@ -49,6 +49,7 @@ pub const VariableSymbol = struct {
 
 pub const FunctionSymbol = struct {
     external: bool,
+    constructor: bool,
     name: []const u8,
     parameters: parser.FunctionDefinitionParameters,
     return_type: ?[]const u8,
@@ -66,6 +67,12 @@ pub const FunctionSymbol = struct {
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
 
         try std.fmt.format(writer, "<external>{}</external>\n", .{self.external});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<constructor>{}</constructor>\n", .{self.constructor});
 
         // Add tabs
         i = 0;
@@ -92,7 +99,7 @@ pub const FunctionSymbol = struct {
 
         if (self.parameters.items.len != 0) {
             try writer.writeAll("\n");
-            
+
             // Add tabs
             i = 0;
             while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
@@ -170,16 +177,55 @@ pub const ClassSymbol = struct {
     }
 };
 
+pub const BlockSymbol = struct {
+    children: SymbolList,
+
+    pub fn writeXML(self: *const BlockSymbol, writer: anytype, tabs: usize, id: usize, node_id: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<block id=\"{d}\" node-id=\"{d}\">\n", .{id, node_id});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<children>");
+        if (self.children.items.len != 0) try writer.writeAll("\n");
+
+        for (self.children.items) |child| {
+            
+            try child.writeXML(writer, tabs + 2);
+        }
+
+        if (self.children.items.len != 0) {
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        }
+        try writer.writeAll("</children>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</block>\n");
+    }
+};
+
 pub const SymbolTag = enum {
     Variable,
     Function,
-    Class
+    Class,
+    Block,
 };
 
 pub const SymbolData = union(SymbolTag) {
     Variable: VariableSymbol,
     Function: FunctionSymbol,
     Class: ClassSymbol,
+    Block: BlockSymbol,
 };
 
 pub const Symbol = struct {
@@ -201,11 +247,45 @@ pub const Symbol = struct {
         return self;
     }
 
+    pub fn getSymbol(self: *Symbol, id: usize) ?*Symbol {
+        if (self.id == id) return self;
+
+        switch (self.data) {
+            .Function => |*function| {
+                for (function.children.items) |*child| {
+                    if (child.getSymbol(id)) |sym| return sym;
+                } 
+            },
+            .Class => |*class| {
+                for (class.children.items) |*child| {
+                    if (child.getSymbol(id)) |sym| return sym;
+                } 
+            },
+            .Block => |*block| {
+                for (block.children.items) |*child| {
+                    if (child.getSymbol(id)) |sym| return sym;
+                } 
+            },
+            else => {}
+        }
+
+        return null;
+    }
+
+    pub fn getClass(self: *Symbol, name: []const u8) ?*Symbol {
+        if (self.data == SymbolTag.Class) {
+            if (std.mem.eql(u8, self.data.Class.name, name)) return self;
+        }
+
+        return null;
+    }
+
     pub fn writeXML(self: *const Symbol, writer: anytype, tabs: usize) !void {
         switch (self.data) {
             .Variable => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
             .Function => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
             .Class => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
+            .Block => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
         }
     }
 };

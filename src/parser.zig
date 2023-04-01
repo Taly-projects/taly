@@ -3,6 +3,7 @@ const lexer = @import("lexer.zig");
 const position = @import("position.zig");
 
 const symbol = @import("symbol.zig");
+pub usingnamespace symbol;
 
 pub const ValueNodeTag = enum {
     String,
@@ -868,7 +869,8 @@ pub const NodeData = union(NodeTag) {
 };
 
 pub const Node = struct {
-    var ID: usize = 0;
+    pub const NO_ID: usize = 0;
+    var ID: usize = 1;
 
     data: NodeData,
     id: usize,
@@ -897,6 +899,8 @@ pub const NodeInfo = struct {
     node_id: usize,
     position: position.Positioned(void),
     symbol_def: ?usize = null,
+    symbol_call: ?usize = null,
+    data_type: ?[]const u8 = null,
 
     pub fn writeXML(self: *const NodeInfo, writer: anytype) anyerror!void {
         try std.fmt.format(writer, "<node-info id=\"{d}\">\n", .{self.node_id});
@@ -908,6 +912,14 @@ pub const NodeInfo = struct {
 
         if (self.symbol_def) |symbol_def| {
             try std.fmt.format(writer, "\t<symbol-def symbol-id=\"{d}\"/>\n", .{symbol_def});
+        }
+
+        if (self.symbol_call) |symbol_call| {
+            try std.fmt.format(writer, "\t<symbol-call symbol-id=\"{d}\"/>\n", .{symbol_call});
+        }
+
+        if (self.data_type) |data_type| {
+            try std.fmt.format(writer, "\t<type>{s}</type>\n", .{data_type});
         }
 
         try writer.writeAll("</node-info>\n");
@@ -1080,6 +1092,7 @@ pub const Parser = struct {
         const sym = symbol.Symbol.gen(symbol.SymbolData {
             .Function = symbol.FunctionSymbol {
                 .external = external,
+                .constructor = constructor,
                 .name = id,
                 .parameters = parameters,
                 .return_type = return_type,
@@ -1789,6 +1802,15 @@ pub const Parser = struct {
 
         var state = IfState.If;
 
+        // Generate symbol
+        const sym_count = self.symbols.items.len;
+        const sym = symbol.Symbol.gen(symbol.SymbolData {
+            .Block = symbol.BlockSymbol {
+                .children = symbol.SymbolList.init(self.allocator),
+            }
+        }, symbol.Symbol.NO_ID);
+        self.symbols.append(sym) catch unreachable;
+
         var current = self.expectCurrent("end");
         while (true) {
             if (current.data.isFormat(lexer.TokenFormat.Tab) or current.data.isFormat(lexer.TokenFormat.NewLine)) {
@@ -1831,6 +1853,7 @@ pub const Parser = struct {
         const end = self.getCurrent().?.end;
         self.advance();
 
+        // Generate node
         const node = Node.gen(NodeData {
             .If = IfNode {
                 .if_branch = IfBranch {
@@ -1841,6 +1864,18 @@ pub const Parser = struct {
                 .else_body = else_body
             }
         });
+
+        // Update symbol ID
+        const symbol_ref = &self.symbols.items[sym_count];
+        symbol_ref.node_id = node.id;
+
+        // Pop all children
+        var i: usize = self.symbols.items.len;
+        while (i > sym_count + 1) {
+            const child = self.symbols.pop();
+            symbol_ref.data.Class.children.append(child) catch unreachable;
+            i -= 1;
+        }
 
         // Generate node informations
         self.infos.append(NodeInfo {
@@ -1859,6 +1894,15 @@ pub const Parser = struct {
         self.expectExactKeyword(lexer.TokenKeyword.Do);
         self.advance();
 
+        // Generate symbol
+        const sym_count = self.symbols.items.len;
+        const sym = symbol.Symbol.gen(symbol.SymbolData {
+            .Block = symbol.BlockSymbol {
+                .children = symbol.SymbolList.init(self.allocator),
+            }
+        }, symbol.Symbol.NO_ID);
+        self.symbols.append(sym) catch unreachable;
+
         var body = NodeList.init(self.allocator);
         var current = self.expectCurrent("end");
         self.tabs += 1;
@@ -1875,12 +1919,25 @@ pub const Parser = struct {
         const end = self.getCurrent().?.end;
         self.advance();
 
+        // Generate node
         const node = Node.gen(NodeData {
             .While = WhileNode {
                 .condition = condition,
                 .body = body
             }
         });
+
+        // Update symbol ID
+        const symbol_ref = &self.symbols.items[sym_count];
+        symbol_ref.node_id = node.id;
+
+        // Pop all children
+        var i: usize = self.symbols.items.len;
+        while (i > sym_count + 1) {
+            const child = self.symbols.pop();
+            symbol_ref.data.Class.children.append(child) catch unreachable;
+            i -= 1;
+        }
 
         // Generate node informations
         self.infos.append(NodeInfo {
@@ -1961,6 +2018,15 @@ pub const Parser = struct {
         condition.* = self.parseExpr();
         self.expectEOS();
 
+        // Generate symbol
+        const sym_count = self.symbols.items.len;
+        const sym = symbol.Symbol.gen(symbol.SymbolData {
+            .Block = symbol.BlockSymbol {
+                .children = symbol.SymbolList.init(self.allocator),
+            }
+        }, symbol.Symbol.NO_ID);
+        self.symbols.append(sym) catch unreachable;
+
         var tabs: usize = 0;
         var branches = IfBranchList.init(self.allocator);
         var else_body = NodeList.init(self.allocator);
@@ -2033,6 +2099,7 @@ pub const Parser = struct {
         const end = self.getCurrent().?.end;
         self.advance();
 
+        // Generate node
         const node = Node.gen(NodeData {
             .Match = MatchStatement {
                 .condition = condition,
@@ -2040,6 +2107,18 @@ pub const Parser = struct {
                 .else_body = else_body,
             }
         });
+
+        // Update symbol ID
+        const symbol_ref = &self.symbols.items[sym_count];
+        symbol_ref.node_id = node.id;
+
+        // Pop all children
+        var i: usize = self.symbols.items.len;
+        while (i > sym_count + 1) {
+            const child = self.symbols.pop();
+            symbol_ref.data.Class.children.append(child) catch unreachable;
+            i -= 1;
+        }
 
         // Generate node informations
         self.infos.append(NodeInfo {

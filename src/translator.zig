@@ -692,13 +692,17 @@ pub const Project = struct {
 pub const Translator = struct {
     allocator: std.mem.Allocator,
     ast: parser.NodeList,
+    infos: parser.NodeInfos,
+    symbols: parser.SymbolList,
     index: usize = 0,
     header: NodeList,
 
-    pub fn init(ast: parser.NodeList, allocator: std.mem.Allocator) Translator {
+    pub fn init(ast: parser.NodeList, infos: parser.NodeInfos, symbols: parser.SymbolList, allocator: std.mem.Allocator) Translator {
         return . {
             .allocator = allocator,
             .ast = ast,
+            .infos = infos,
+            .symbols = symbols,
             .header = NodeList.init(allocator),
         };
     }
@@ -722,9 +726,9 @@ pub const Translator = struct {
         return data_type;
     }
 
-    fn translateValueNode(self: *Translator, value: parser.ValueNode) Node {
+    fn translateValueNode(self: *Translator, node: parser.Node) Node {
         _ = self;
-        switch (value) {
+        switch (node.data.Value) {
             .String => |str| return Node { .Value = . { .String = str } },
             .Int => |num| return Node { .Value = . { .Int = num } },
             .Float => |num| return Node { .Value = . { .Float = num } },
@@ -732,8 +736,10 @@ pub const Translator = struct {
         }
     }
 
-    fn translateFunctionDefinition(self: *Translator, function_def: parser.FunctionDefinitionNode) NodeList {
+    fn translateFunctionDefinition(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
+
+        const function_def = node.data.FunctionDefinition;
 
         // External functions nothing to do (only used to tell the compiler a function exists)..
         if (function_def.external) return nodes;
@@ -760,8 +766,8 @@ pub const Translator = struct {
 
         // Translate body
         var body = NodeList.init(self.allocator);
-        for (function_def.body.items) |node| {
-            body.appendSlice(self.translateNode(node).items) catch unreachable;
+        for (function_def.body.items) |child| {
+            body.appendSlice(self.translateNode(child).items) catch unreachable;
         }
 
         // Create translated node
@@ -777,8 +783,11 @@ pub const Translator = struct {
         return nodes;
     }
 
-    fn translateFunctionCall(self: *Translator, function_call: parser.FunctionCallNode) NodeList {
+    fn translateFunctionCall(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
+
+        const function_call = node.data.FunctionCall;
+
         // Translate Parameters
         var parameters = NodeList.init(self.allocator);
         for (function_call.parameters.items) |param| {
@@ -798,7 +807,9 @@ pub const Translator = struct {
         return nodes;
     }
 
-    fn translateUse(self: *Translator, use: parser.UseNode) void {
+    fn translateUse(self: *Translator, node: parser.Node) void {
+        const use = node.data.Use;
+
         if (std.mem.startsWith(u8, use.path, "std-")) {
             self.header.append(Node {
                 .Include = .{
@@ -816,8 +827,10 @@ pub const Translator = struct {
         } 
     }
 
-    fn translateReturn(self: *Translator, return_node: parser.ReturnNode) NodeList {
+    fn translateReturn(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
+
+        const return_node = node.data.Return;
 
         // Translate value (if present)
         var new_value: ?*Node = null;
@@ -838,15 +851,17 @@ pub const Translator = struct {
         return nodes;
     }
 
-    fn translateVariableDefinition(self: *Translator, node: parser.VariableDefinitionNode) NodeList {
+    fn translateVariableDefinition(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
+
+        const variable_def = node.data.VariableDefinition;
         
         // Translate type
-        const new_data_type = self.translateType(node.data_type);
+        const new_data_type = self.translateType(variable_def.data_type);
 
         // Translate value (if present)
         var new_value: ?*Node = null;
-        if (node.value) |value| {
+        if (variable_def.value) |value| {
             new_value = self.allocator.create(Node) catch unreachable;
             var res = self.translateNode(value.*);
             new_value.?.* = res.pop();
@@ -856,8 +871,8 @@ pub const Translator = struct {
         // Create translated node
         nodes.append(Node {
             .VariableDefinition = .{
-                .constant = node.constant,
-                .name = node.name,
+                .constant = variable_def.constant,
+                .name = variable_def.name,
                 .data_type = new_data_type,
                 .value = new_value
             }
@@ -866,21 +881,25 @@ pub const Translator = struct {
         return nodes;
     }
 
-    fn translateVariableCall(self: *Translator, node: parser.VariableCallNode) NodeList {
+    fn translateVariableCall(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
+
+        const variable_call = node.data.VariableCall;
 
         // Create translated node
         nodes.append(Node {
             .VariableCall = .{ 
-                .name = node.name
+                .name = variable_call.name
             }
         }) catch unreachable;
 
         return nodes;
     }
 
-    fn translateBinaryOperation(self: *Translator, bin_op: parser.BinaryOperationNode) NodeList {
+    fn translateBinaryOperation(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
+
+        const bin_op = node.data.BinaryOperation;
 
         // Translate LHS
         var lhs_res = self.translateNode(bin_op.lhs.*);
@@ -911,6 +930,7 @@ pub const Translator = struct {
             .And => operator = .And,
             .Or => operator = .Or,
             .Access => {
+                // TODO: Fix Access
                 operator = .Access;
             },
             else => unreachable
@@ -928,18 +948,20 @@ pub const Translator = struct {
         return nodes;
     }
 
-    fn translateUnaryOperation(self: *Translator, bin_op: parser.UnaryOperationNode) NodeList {
+    fn translateUnaryOperation(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
 
+        const un_op = node.data.UnaryOperation;
+
         // Translate value
-        var res = self.translateNode(bin_op.value.*);
+        var res = self.translateNode(un_op.value.*);
         var value_node = self.allocator.create(Node) catch unreachable;
         value_node.* = res.pop();
         nodes.appendSlice(res.items) catch unreachable;
 
         // Translate operator
         var operator: Operator = undefined;
-        switch (bin_op.operator) {
+        switch (un_op.operator) {
             .Add => operator = .Add,
             .Subtract => operator = .Subtract,
             .Not => operator = .Not,
@@ -957,8 +979,10 @@ pub const Translator = struct {
         return nodes;
     }
 
-    fn translateIfStatement(self: *Translator, if_node: parser.IfNode) NodeList {
+    fn translateIfStatement(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
+
+        const if_node = node.data.If;
 
         var condition = self.allocator.create(Node) catch unreachable;
         var node_res = self.translateNode(if_node.if_branch.condition.*);
@@ -966,8 +990,8 @@ pub const Translator = struct {
         nodes.appendSlice(node_res.items) catch unreachable;
 
         var body = NodeList.init(self.allocator);
-        for (if_node.if_branch.body.items) |node| {
-            node_res = self.translateNode(node);
+        for (if_node.if_branch.body.items) |child| {
+            node_res = self.translateNode(child);
             body.appendSlice(node_res.items) catch unreachable;
         }
 
@@ -979,8 +1003,8 @@ pub const Translator = struct {
             nodes.appendSlice(node_res.items) catch unreachable;
 
             var elif_body = NodeList.init(self.allocator);
-            for (branch.body.items) |node| {
-                node_res = self.translateNode(node);
+            for (branch.body.items) |child| {
+                node_res = self.translateNode(child);
                 elif_body.appendSlice(node_res.items) catch unreachable;
             }
 
@@ -991,8 +1015,8 @@ pub const Translator = struct {
         }
 
         var else_body = NodeList.init(self.allocator);
-        for (if_node.else_body.items) |node| {
-            node_res = self.translateNode(node);
+        for (if_node.else_body.items) |child| {
+            node_res = self.translateNode(child);
             else_body.appendSlice(node_res.items) catch unreachable;
         }
 
@@ -1010,8 +1034,10 @@ pub const Translator = struct {
         return nodes;
     }
 
-    fn translateWhileLoop(self: *Translator, while_node: parser.WhileNode) NodeList {
+    fn translateWhileLoop(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
+
+        const while_node = node.data.While;
 
         var condition = self.allocator.create(Node) catch unreachable;
         var node_res = self.translateNode(while_node.condition.*);
@@ -1019,8 +1045,8 @@ pub const Translator = struct {
         nodes.appendSlice(node_res.items) catch unreachable;
 
         var body = NodeList.init(self.allocator);
-        for (while_node.body.items) |node| {
-            node_res = self.translateNode(node);
+        for (while_node.body.items) |child| {
+            node_res = self.translateNode(child);
             body.appendSlice(node_res.items) catch unreachable;
         }
 
@@ -1034,8 +1060,10 @@ pub const Translator = struct {
         return nodes;
     }
 
-    fn translateMatchStatement(self: *Translator, match_node: parser.MatchStatement) NodeList {
+    fn translateMatchStatement(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
+
+        const match_node = node.data.Match;
 
         var lhs = self.allocator.create(Node) catch unreachable;
         var res = self.translateNode(match_node.condition.*);
@@ -1061,8 +1089,8 @@ pub const Translator = struct {
             };
 
             var body = NodeList.init(self.allocator);
-            for (branch.body.items) |node| {
-                body.appendSlice(self.translateNode(node).items) catch unreachable;
+            for (branch.body.items) |child| {
+                body.appendSlice(self.translateNode(child).items) catch unreachable;
             }
 
             const new_branch = IfBranch {
@@ -1078,8 +1106,8 @@ pub const Translator = struct {
         }
 
         var else_body = NodeList.init(self.allocator);
-        for (match_node.else_body.items) |node| {
-            else_body.appendSlice(self.translateNode(node).items) catch unreachable;
+        for (match_node.else_body.items) |child| {
+            else_body.appendSlice(self.translateNode(child).items) catch unreachable;
         }
 
         nodes.append(Node {
@@ -1093,8 +1121,11 @@ pub const Translator = struct {
         return nodes;
     }
 
-    fn translateLabel(self: *Translator, label: parser.LabelNode) Node {
+    fn translateLabel(self: *Translator, node: parser.Node) Node {
         _ = self;
+
+        const label = node.data.Label;
+
         return Node {
             .Label = LabelNode {
                 .label = label.label
@@ -1102,8 +1133,11 @@ pub const Translator = struct {
         };
     }
 
-    fn translateContinue(self: *Translator, ctn: parser.ContinueNode) Node {
+    fn translateContinue(self: *Translator, node: parser.Node) Node {
         _ = self;
+
+        const ctn = node.data.Continue;
+
         return Node {
             .Continue = ContinueNode {
                 .label = ctn.label
@@ -1111,8 +1145,11 @@ pub const Translator = struct {
         };
     }
 
-    fn translateBreak(self: *Translator, brk: parser.BreakNode) Node {
+    fn translateBreak(self: *Translator, node: parser.Node) Node {
         _ = self;
+
+        const brk = node.data.Break;
+
         return Node {
             .Break = BreakNode {
                 .label = brk.label
@@ -1120,20 +1157,22 @@ pub const Translator = struct {
         };
     }
 
-    fn translateClass(self: *Translator, class: parser.ClassNode) NodeList {
+    fn translateClass(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
+
+        const class = node.data.Class;
 
         var fields = StructFields.init(self.allocator);
         var methods = parser.NodeList.init(self.allocator);
         
-        for (class.body.items) |node| {
-            if (node == parser.NodeTag.VariableDefinition) {
+        for (class.body.items) |child| {
+            if (child.data == parser.NodeTag.VariableDefinition) {
                 fields.append(StructField {
-                    .name = node.VariableDefinition.name,
-                    .data_type = self.translateType(node.VariableDefinition.data_type),
+                    .name = child.data.VariableDefinition.name,
+                    .data_type = self.translateType(child.data.VariableDefinition.data_type),
                 }) catch unreachable;
-            } else if (node == parser.NodeTag.FunctionDefinition) {
-                methods.append(node) catch unreachable;
+            } else if (child.data == parser.NodeTag.FunctionDefinition) {
+                methods.append(child) catch unreachable;
             } else {
                 @panic("Unexpected node in class!");
             }
@@ -1153,35 +1192,36 @@ pub const Translator = struct {
         return nodes;
     }
 
-    fn translateCIPureC(self: *Translator, node: parser.CI_PureCNode) Node {
+    fn translateCIPureC(self: *Translator, node: parser.Node) Node {
         _ = self;
+
         return Node {
             .CI_PureC = CI_PureCNode {
-                .code = node.code
+                .code = node.data.CI_PureC.code
             }
         };
     }
 
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
-        switch (node) {
-            .Value => |value| nodes.append(self.translateValueNode(value)) catch unreachable,
-            .FunctionDefinition => |function_def| nodes.appendSlice(self.translateFunctionDefinition(function_def).items) catch unreachable,
-            .FunctionCall => |function_call| nodes.appendSlice(self.translateFunctionCall(function_call).items) catch unreachable,
-            .Use => |use| self.translateUse(use),
-            .Return => |ret| nodes.appendSlice(self.translateReturn(ret).items) catch unreachable,
-            .VariableDefinition => |var_def| nodes.appendSlice(self.translateVariableDefinition(var_def).items) catch unreachable,
-            .VariableCall => |var_call| nodes.appendSlice(self.translateVariableCall(var_call).items) catch unreachable,
-            .BinaryOperation => |bin_op| nodes.appendSlice(self.translateBinaryOperation(bin_op).items) catch unreachable,
-            .UnaryOperation => |bin_op| nodes.appendSlice(self.translateUnaryOperation(bin_op).items) catch unreachable,
-            .If => |if_statement| nodes.appendSlice(self.translateIfStatement(if_statement).items) catch unreachable,
-            .While => |while_loop| nodes.appendSlice(self.translateWhileLoop(while_loop).items) catch unreachable,
-            .Label => |label| nodes.append(self.translateLabel(label)) catch unreachable,
-            .Continue => |label| nodes.append(self.translateContinue(label)) catch unreachable,
-            .Break => |label| nodes.append(self.translateBreak(label)) catch unreachable,
-            .Match => |match| nodes.appendSlice(self.translateMatchStatement(match).items) catch unreachable,
-            .Class => |class| nodes.appendSlice(self.translateClass(class).items) catch unreachable,
-            .CI_PureC => |ci| nodes.append(self.translateCIPureC(ci)) catch unreachable,
+        switch (node.data) {
+            .Value => nodes.append(self.translateValueNode(node)) catch unreachable,
+            .FunctionDefinition => nodes.appendSlice(self.translateFunctionDefinition(node).items) catch unreachable,
+            .FunctionCall => nodes.appendSlice(self.translateFunctionCall(node).items) catch unreachable,
+            .Use => self.translateUse(node),
+            .Return => nodes.appendSlice(self.translateReturn(node).items) catch unreachable,
+            .VariableDefinition => nodes.appendSlice(self.translateVariableDefinition(node).items) catch unreachable,
+            .VariableCall => nodes.appendSlice(self.translateVariableCall(node).items) catch unreachable,
+            .BinaryOperation => nodes.appendSlice(self.translateBinaryOperation(node).items) catch unreachable,
+            .UnaryOperation => nodes.appendSlice(self.translateUnaryOperation(node).items) catch unreachable,
+            .If => nodes.appendSlice(self.translateIfStatement(node).items) catch unreachable,
+            .While => nodes.appendSlice(self.translateWhileLoop(node).items) catch unreachable,
+            .Label => nodes.append(self.translateLabel(node)) catch unreachable,
+            .Continue => nodes.append(self.translateContinue(node)) catch unreachable,
+            .Break => nodes.append(self.translateBreak(node)) catch unreachable,
+            .Match => nodes.appendSlice(self.translateMatchStatement(node).items) catch unreachable,
+            .Class => nodes.appendSlice(self.translateClass(node).items) catch unreachable,
+            .CI_PureC => nodes.append(self.translateCIPureC(node)) catch unreachable,
         }
         return nodes;
     }

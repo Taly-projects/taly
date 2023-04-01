@@ -60,24 +60,44 @@ pub fn main() !void {
     // }
 
     var par = parser.Parser.init(path, src, tokens, arena.allocator());
-    const ast = par.parse();
+    const par_res = par.parse();
+    const ast = par_res.@"0";
+    const infos = par_res.@"1";
+    const symbols = par_res.@"2";
 
     // Generator
-    var gen = generator.Generator.init(ast, arena.allocator());
-    const gen_ast = gen.generate();
+    var gen = generator.Generator.init(ast, infos, symbols, arena.allocator());
+    const gen_res = gen.generate();
+    const gen_ast = gen_res.@"0";
+    const gen_infos = gen_res.@"1";
+    const gen_symbols = gen_res.@"2";
 
     if (print_ast) {
         // Create Output File
-        var generator_out = try out_dir.createFile("generator.xml", .{});
-        defer generator_out.close();
+        var ast_out = try out_dir.createFile("ast.xml", .{});
+        defer ast_out.close();
 
         for (gen_ast.items) |node| {
-            node.writeXML(generator_out.writer(), 0) catch unreachable;
+            node.writeXML(ast_out.writer(), 0) catch unreachable;
+        }
+        // Create Output File
+        var infos_out = try out_dir.createFile("infos.xml", .{});
+        defer infos_out.close();
+
+        for (gen_infos.items) |info| {
+            info.writeXML(infos_out.writer()) catch unreachable;
+        }
+        // Create Output File
+        var symbols_out = try out_dir.createFile("symbols.xml", .{});
+        defer symbols_out.close();
+
+        for (gen_symbols.items) |sym| {
+            sym.writeXML(symbols_out.writer(), 0) catch unreachable;
         }
     }
     
     // Translator
-    var tra = translator.Translator.init(gen_ast, arena.allocator());
+    var tra = translator.Translator.init(gen_ast, gen_infos, gen_symbols, arena.allocator());
     const c_project = tra.translate();
 
     for (c_project.files.items) |c_file| {
