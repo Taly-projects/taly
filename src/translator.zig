@@ -716,6 +716,21 @@ pub const Translator = struct {
         self.index += 1;
     }
 
+    fn getInfo(self: *const Translator, id: usize) ?*parser.NodeInfo {
+        for (self.infos.items) |*info| {
+            if (info.node_id == id) return info;
+        }
+        return null;
+    }
+
+    fn getSymbol(self: *const Translator, id: usize) ?*parser.Symbol {
+        for (self.symbols.items) |*sym| {
+            if (sym.getSymbol(id)) |sym2| return sym2;
+        }
+
+        return null;
+    }
+
     fn translateType(self: *Translator, data_type: []const u8) []const u8 {
         _ = self;
 
@@ -930,8 +945,17 @@ pub const Translator = struct {
             .And => operator = .And,
             .Or => operator = .Or,
             .Access => {
-                // TODO: Fix Access
-                operator = .Access;
+                const lhs_info = self.getInfo(node.data.BinaryOperation.lhs.id).?;
+                const lhs_sym = self.getSymbol(lhs_info.symbol_call.?).?;
+                
+                if (lhs_sym.data == parser.SymbolTag.Variable) {
+                    // TODO: Check if rhs is function
+                    
+                    operator = .PointerAccess;
+                } else {
+                    operator = .Access;
+                }
+
             },
             else => unreachable
         }
