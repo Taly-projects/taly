@@ -340,6 +340,9 @@ pub const Generator = struct {
         scope.parent.?.* = self.scope;
         self.scope = scope;
 
+        // Contains the new node
+        var body = parser.NodeList.init(self.allocator);
+
         // Check if method
         var parameters = parser.FunctionDefinitionParameters.init(self.allocator);
         if (self.scope.getParentClass()) |class| {
@@ -348,6 +351,24 @@ pub const Generator = struct {
                 .name = "self",
                 .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable
             }) catch unreachable;
+
+            if (node.data.FunctionDefinition.constructor) {
+                // Generate _self_data
+                const self_data_node = parser.Node.gen(parser.NodeData {
+                    .CI_PureC = parser.CI_PureCNode {
+                        .code = std.mem.concat(self.allocator, u8, &[_][]const u8{ class.data.Class.name, " _self_data;" }) catch unreachable
+                    }
+                });
+                body.append(self_data_node) catch unreachable;
+
+                // Generate self
+                const self_node = parser.Node.gen(parser.NodeData {
+                    .CI_PureC = parser.CI_PureCNode {
+                        .code = std.mem.concat(self.allocator, u8, &[_][]const u8{ class.data.Class.name, " *self = &_self_data;" }) catch unreachable
+                    }
+                });
+                body.append(self_node) catch unreachable;
+            }
         }
         parameters.appendSlice(node.data.FunctionDefinition.parameters.items) catch unreachable;
 
@@ -364,7 +385,6 @@ pub const Generator = struct {
         }
 
         // Check body
-        var body = parser.NodeList.init(self.allocator);
         for (node.data.FunctionDefinition.body.items) |child| {
             body.append(self.generateNode(child)) catch unreachable;
         }
@@ -719,7 +739,7 @@ pub const Generator = struct {
         // Exit scope
         self.scope = self.scope.parent.?.*;
         
-        return node;
+        return new_node;
     }
 
     fn generateNode(self: *Generator, node: parser.Node) parser.Node {
