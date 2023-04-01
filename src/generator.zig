@@ -472,11 +472,15 @@ pub const Generator = struct {
         const specified_param_count = node.data.FunctionCall.parameters.items.len;
         const defined_param_count = function_symbol.data.Function.parameters.items.len;
         if (specified_param_count > defined_param_count) {
-            @panic("todo");
+            const info = self.getInfo(node.id).?;
+            info.position.errorMessageReturn("Not many parameters specified for function `{s}` !", .{node.data.FunctionCall.name}, self.src, self.file_name);
+            const symbol_info = self.getInfo(function_symbol.node_id).?;
+            symbol_info.position.errorMessage("Defined here:", .{}, self.src, self.file_name);
         } else if (specified_param_count < defined_param_count) {
-            @panic("todo");
-        } else {
-
+            const info = self.getInfo(node.id).?;
+            info.position.errorMessageReturn("Not enough parameters specified for function `{s}` !", .{node.data.FunctionCall.name}, self.src, self.file_name);
+            const symbol_info = self.getInfo(function_symbol.node_id).?;
+            symbol_info.position.errorMessage("Defined here:", .{}, self.src, self.file_name);
         }
 
         var parameters = parser.NodeList.init(self.allocator);
