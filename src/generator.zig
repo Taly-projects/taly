@@ -239,6 +239,35 @@ pub const Scope = struct {
    
         return null;
     }
+    
+    pub fn getAlias(self: *const Scope, root: *const parser.SymbolList, name: []const u8) ?*parser.Symbol {
+        if (self.entered) |entered| {
+            _ = entered;
+            return null; 
+        }
+
+        if (self.scope) |scope| {
+            _ = scope;
+        } else {
+            // Root
+            for (root.items) |*sym| {
+                switch (sym.data) {
+                    .TypeAlias => |alias| {
+                        if (std.mem.eql(u8, alias.name, name)) {
+                            return sym;
+                        } 
+                    },
+                    else => {}
+                }
+            }
+        }
+
+        if (self.parent) |parent| {
+            return parent.getAlias(root, name);
+        }
+   
+        return null;
+    }
 
     pub fn getParentClass(self: *const Scope) ?*parser.Symbol {
         if (self.parent) |parent| {
@@ -254,6 +283,7 @@ pub const Scope = struct {
         return null;
     }
 };
+
 
 pub const Generator = struct {
     file_name: []const u8,
@@ -303,6 +333,14 @@ pub const Generator = struct {
     fn getClass(self: *const Generator, name: []const u8) ?*parser.Symbol {
         for (self.symbols.items) |*sym| {
             if (sym.getClass(name)) |sym2| return sym2;
+        }
+
+        return null;
+    }
+
+    fn getAlias(self: *const Generator, name: []const u8) ?*parser.Symbol {
+        for (self.symbols.items) |*sym| {
+            if (sym.getAlias(name)) |sym2| return sym2;
         }
 
         return null;
@@ -538,8 +576,26 @@ pub const Generator = struct {
 
             const value_info = self.getInfo(gen_value.id).?;
             if (value_info.data_type) |data_type| {
+                std.log.info("{s} {s}", .{data_type, node.data.VariableDefinition.data_type});
                 if (!std.mem.eql(u8, data_type, node.data.VariableDefinition.data_type)) {
-                    @panic("todo");
+                    var found = false;
+                    if (self.getAlias(data_type)) |alias| {
+                        if (std.mem.eql(u8, alias.data.TypeAlias.value, node.data.VariableDefinition.data_type)) {
+                            found = true;
+                        }
+                    }
+
+                    if (!found) {
+                        if (self.getAlias(node.data.VariableDefinition.data_type)) |alias| {
+                            if (std.mem.eql(u8, alias.data.TypeAlias.value, data_type)) {
+                                found = true;
+                            }
+                        }
+                    }
+
+                    if (!found) {
+                        @panic("todo");
+                    }
                 }
             } else {
                 @panic("todo");
@@ -565,10 +621,14 @@ pub const Generator = struct {
         // Check if exists
         var sym: *parser.Symbol = undefined;
 
-        if (self.scope.getVariable(&self.symbols, node.data.VariableCall.name)) |variable| {
+        const var_name = if (self.scope.getAlias(&self.symbols, node.data.VariableCall.name)) |variable| blk: {
+            break :blk variable.data.TypeAlias.value;
+        } else node.data.VariableCall.name;
+
+        if (self.scope.getVariable(&self.symbols, var_name)) |variable| {
             sym = variable;
             info.data_type = sym.data.Variable.data_type;
-        } else if (self.scope.getClass(&self.symbols, node.data.VariableCall.name)) |class| {
+        } else if (self.scope.getClass(&self.symbols, var_name)) |class| {
             sym = class;
         } else {
             std.log.info("Not found: {s} in:", .{node.data.VariableCall.name});
@@ -610,9 +670,13 @@ pub const Generator = struct {
 
             var can_access_field = false;
             if (sym.data == parser.SymbolTag.Variable) {
-                const class_name = if (std.mem.endsWith(u8, sym.data.Variable.data_type, "*")) blk: {
+                var class_name = if (std.mem.endsWith(u8, sym.data.Variable.data_type, "*")) blk: {
                     break :blk sym.data.Variable.data_type[0..(sym.data.Variable.data_type.len - 1)];
                 } else sym.data.Variable.data_type;
+
+                if (self.getAlias(class_name)) |sym_alias| {
+                    class_name = sym_alias.data.TypeAlias.value;
+                } 
 
                 if (self.getClass(class_name)) |sym_class| {
                     self.scope.entered = sym_class;

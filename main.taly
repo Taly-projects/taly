@@ -12,7 +12,9 @@ class Person
 
     fn sayHello() => printf("Hello I'm %s\n", self.name)
 
+type Person2 = Person
+
 # main function
 fn main() =>
-    var person: Person = Person.create("John", 12)
+    var person: Person2 = Person2.create("John", 12)
     person.sayHello()

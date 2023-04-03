@@ -554,6 +554,21 @@ pub const StructNode = struct {
     }
 };
 
+pub const TypedefNode = struct {
+    name: []const u8,
+    value: []const u8,
+
+    pub fn writeC(self: *const TypedefNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "typedef {s} {s}", .{self.value, self.name});
+
+        return true;
+    }
+};
+
 pub const CI_PureCNode = struct {
     code: []const u8,
 
@@ -600,6 +615,7 @@ pub const NodeTag = enum {
     Continue,
     Break,
     Struct,
+    Typedef,
     CI_PureC,
     CI_PreC,
 };
@@ -621,6 +637,7 @@ pub const Node = union(NodeTag) {
     Continue: ContinueNode,
     Break: BreakNode,
     Struct: StructNode,
+    Typedef: TypedefNode,
     CI_PureC: CI_PureCNode,
     CI_PreC: CI_PreCNode,
 
@@ -642,6 +659,7 @@ pub const Node = union(NodeTag) {
             .Continue => |node| return node.writeC(writer, tabs),
             .Break => |node| return node.writeC(writer, tabs),
             .Struct => |node| return node.writeC(writer, tabs),
+            .Typedef => |node| return node.writeC(writer, tabs),
             .CI_PureC => |node| return node.writeC(writer, tabs),
             .CI_PreC => |node| return node.writeC(writer, tabs),
         }
@@ -1267,6 +1285,15 @@ pub const Translator = struct {
         return nodes;
     }
 
+    fn translateTypeAlias(self: *Translator, node: parser.Node) void {
+        self.header.append(Node {
+            .Typedef = TypedefNode {
+                .name = node.data.Type.name,
+                .value = node.data.Type.value
+            }
+        }) catch unreachable;
+    }
+
     fn translateCIPureC(self: *Translator, node: parser.Node) Node {
         _ = self;
 
@@ -1296,6 +1323,7 @@ pub const Translator = struct {
             .Break => nodes.append(self.translateBreak(node)) catch unreachable,
             .Match => nodes.appendSlice(self.translateMatchStatement(node).items) catch unreachable,
             .Class => nodes.appendSlice(self.translateClass(node).items) catch unreachable,
+            .Type => self.translateTypeAlias(node),
             .CI_PureC => nodes.append(self.translateCIPureC(node)) catch unreachable,
         }
         return nodes;

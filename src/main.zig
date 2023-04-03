@@ -4,6 +4,9 @@ const parser = @import("parser.zig");
 const translator = @import("translator.zig");
 const generator = @import("generator.zig");
 
+// Run command:
+// clear && zig build run -freference-trace -- main.taly --ast --run
+
 pub fn main() !void {
     const stdout = std.io.getStdOut();
     if (std.os.argv.len <= 1) {

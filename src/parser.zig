@@ -762,6 +762,38 @@ pub const ClassNode = struct {
     }
 };
 
+pub const TypeNode = struct {
+    name: []const u8,
+    value: []const u8,
+
+    pub fn writeXML(self: *const TypeNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<type-alias id=\"{d}\">\n", .{id});
+
+        // Add tabs (+ 1)
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        
+        try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
+
+        // Add tabs (+ 1)
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        
+        try std.fmt.format(writer, "<value>{s}</value>\n", .{self.value});
+
+        // Add tabs
+        i = 0;        
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</type-alias>\n");
+    }
+
+};
+
 // Compiler Instruction - Pure C
 pub const CI_PureCNode = struct {
     code: []const u8,
@@ -792,6 +824,7 @@ pub const NodeTag = enum {
     Break,
     Match,
     Class,
+    Type,
     CI_PureC,
 };
 
@@ -812,6 +845,7 @@ pub const NodeData = union(NodeTag) {
     Break: BreakNode,
     Match: MatchStatement,
     Class: ClassNode,
+    Type: TypeNode,
     CI_PureC: CI_PureCNode,
 
     pub fn makeNode(self: NodeData) Node {
@@ -836,6 +870,7 @@ pub const NodeData = union(NodeTag) {
             .Break => |node| return node.writeXML(writer, tabs, id),
             .Match => |node| return node.writeXML(writer, tabs, id),
             .Class => |node| return node.writeXML(writer, tabs, id),
+            .Type => |node| return node.writeXML(writer, tabs, id),
             .CI_PureC => |node| return node.writeXML(writer, tabs, id),
         }
     }
@@ -863,6 +898,7 @@ pub const NodeData = union(NodeTag) {
             .Break => |node| node.writeXML(writer, 0) catch unreachable,
             .Match => |node| node.writeXML(writer, 0) catch unreachable,
             .Class => |node| node.writeXML(writer, 0) catch unreachable,
+            .Type => |node| node.writeXML(writer, 0) catch unreachable,
             .CI_PureC => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
@@ -2207,6 +2243,44 @@ pub const Parser = struct {
         return node;
     }
 
+    fn parseTypeAlias(self: *Parser) Node {
+        const start = self.getCurrent().?.start;
+        self.advance();
+        const name = self.expectIdentifier();
+        self.advance();
+        self.expectSymbol(lexer.TokenSymbol.Equal);
+        self.advance();
+        const value = self.expectIdentifier();
+        const end = self.getCurrent().?.end;
+        self.advance();
+
+        // Generate Node
+        const node = Node.gen(NodeData {
+            .Type = TypeNode {
+                .name = name,
+                .value = value
+            }
+        });
+
+        // Generate symbol
+        const sym = symbol.Symbol.gen(symbol.SymbolData {
+            .TypeAlias = symbol.TypeAliasSymbol {
+                .name = name,
+                .value = value
+            }
+        }, node.id);
+        self.symbols.append(sym) catch unreachable;
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end),
+            .symbol_def = sym.id
+        }) catch unreachable;
+
+        return node;
+    }
+
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         const start = self.getCurrent().?.start;
         switch (keyword) {
@@ -2228,6 +2302,7 @@ pub const Parser = struct {
             .Match => return self.parseMatch(),
             .Class => return self.parseClass(),
             .New => return self.parseFunctionDefinition(false, true, start),
+            .Type => return self.parseTypeAlias(),
             else => {
                 const current = self.getCurrent().?;
                 current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);
