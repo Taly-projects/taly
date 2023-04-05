@@ -90,6 +90,7 @@ pub const TokenSymbol = enum {
     DoubleEqual,
     ExclamationMarkEqual,
     Dot,
+    TripleDot,
 
     pub fn format(self: *const TokenSymbol, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         // _ = fmt;
@@ -114,6 +115,7 @@ pub const TokenSymbol = enum {
                 .DoubleEqual => return std.fmt.format(writer, "Double Equal `==`", .{}),
                 .ExclamationMarkEqual => return std.fmt.format(writer, "Exclamation Mark Equal `!=`", .{}),
                 .Dot => return std.fmt.format(writer, "Dot `.`", .{}),
+                .TripleDot => return std.fmt.format(writer, "Triple Dot `...`", .{}),
             }
         } else {
             switch (self.*) {
@@ -134,6 +136,7 @@ pub const TokenSymbol = enum {
                 .DoubleEqual => return std.fmt.format(writer, "==", .{}),
                 .ExclamationMarkEqual => return std.fmt.format(writer, "!=", .{}),
                 .Dot => return std.fmt.format(writer, ".", .{}),
+                .TripleDot => return std.fmt.format(writer, "...", .{}),
             }
         }
     }
@@ -534,7 +537,20 @@ pub const Lexer = struct {
                     '-' => tokens.append(self.makeSingle(Token { .Symbol = .Dash })) catch unreachable,
                     '*' => tokens.append(self.makeSingle(Token { .Symbol = .Star })) catch unreachable,
                     '/' => tokens.append(self.makeSingle(Token { .Symbol = .Slash })) catch unreachable,
-                    '.' => tokens.append(self.makeSingle(Token { .Symbol = .Dot })) catch unreachable,
+                    '.' => {
+                        const next = self.peek(1);
+                        const next2 = self.peek(2);
+                        if (next == '.' and next2 == '.') {
+                            start_pos = self.pos;
+                            self.advance();
+                            self.advance();
+                            var end_pos = self.pos;
+                            end_pos.advance('.');
+                            tokens.append(PositionedToken.init(Token { .Symbol = .TripleDot }, start_pos, end_pos)) catch unreachable;
+                        } else {
+                            tokens.append(self.makeSingle(Token { .Symbol = .Dot })) catch unreachable;
+                        }
+                    },
                     ' ', '\r' => {
                         // Ignored
                     },

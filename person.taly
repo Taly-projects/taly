@@ -1,6 +1,6 @@
 use "std-stdio"
 
-extern fn printf(msg: c_string, param: c_string)
+extern fn printf(msg: c_string, ...)
 
 class Person
     var name: c_string

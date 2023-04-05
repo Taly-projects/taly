@@ -50,6 +50,7 @@ pub const VariableSymbol = struct {
 pub const FunctionSymbol = struct {
     external: bool,
     constructor: bool,
+    variadic: bool = false,
     name: []const u8,
     parameters: parser.FunctionDefinitionParameters,
     return_type: ?[]const u8,
@@ -67,6 +68,12 @@ pub const FunctionSymbol = struct {
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
 
         try std.fmt.format(writer, "<external>{}</external>\n", .{self.external});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<variadic>{}</variadic>\n", .{self.variadic});
 
         // Add tabs
         i = 0;

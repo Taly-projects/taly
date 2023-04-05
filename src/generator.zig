@@ -512,7 +512,8 @@ pub const Generator = struct {
         // Check if parameters match (type + number)
         const specified_param_count = node.data.FunctionCall.parameters.items.len;
         const defined_param_count = function_symbol.data.Function.parameters.items.len;
-        if (specified_param_count > defined_param_count) {
+        
+        if (!function_symbol.data.Function.variadic and specified_param_count > defined_param_count) {
             const info = self.getInfo(node.id).?;
             info.position.errorMessageReturn("Not many parameters specified for function `{s}` !", .{node.data.FunctionCall.name}, self.src, self.file_name);
             const symbol_info = self.getInfo(function_symbol.node_id).?;
@@ -527,19 +528,22 @@ pub const Generator = struct {
         var parameters = parser.NodeList.init(self.allocator);
         var i: usize = 0;
         for (node.data.FunctionCall.parameters.items) |param| {
-            const defined_param = function_symbol.data.Function.parameters.items[i];
-
             const generated_param = self.generateNode(param);
             parameters.append(generated_param) catch unreachable;
 
-            const param_info = self.getInfo(generated_param.id).?;
-            if (param_info.data_type) |data_type| {
-                if (!std.mem.eql(u8, defined_param.data_type, data_type)) {
-                    @panic("todo");
+            // Only check type if not part of variadic
+            if (i < defined_param_count) {
+                const defined_param = function_symbol.data.Function.parameters.items[i];
+                
+                const param_info = self.getInfo(generated_param.id).?;
+                if (param_info.data_type) |data_type| {
+                    if (!std.mem.eql(u8, defined_param.data_type, data_type)) {
+                        @panic("todo");
+                    }
+                } else {
+                    param.writeXML(std.io.getStdOut().writer(), 0) catch unreachable;
+                    @panic("todo (no info type)");
                 }
-            } else {
-                param.writeXML(std.io.getStdOut().writer(), 0) catch unreachable;
-                @panic("todo (no info type)");
             }
 
             i += 1;

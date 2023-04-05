@@ -90,6 +90,7 @@ pub const FunctionDefinitionParameters = std.ArrayList(FunctionDefinitionParamet
 pub const FunctionDefinitionNode = struct {
     name: []const u8,
     parameters: FunctionDefinitionParameters,
+    variadic: bool,
     return_type: ?[]const u8,
     external: bool,
     constructor: bool,
@@ -138,6 +139,12 @@ pub const FunctionDefinitionNode = struct {
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
 
         try std.fmt.format(writer, "<external>{}</external>\n", .{self.external});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<variadic>{}</variadic>\n", .{self.variadic});
 
         // Add tabs
         i = 0;
@@ -1150,10 +1157,17 @@ pub const Parser = struct {
         self.advance();
         var parameters = FunctionDefinitionParameters.init(self.allocator);
         var current = self.expectCurrent(")");
+        var variadic = false;
         while (!current.data.isSymbol(lexer.TokenSymbol.RightParenthesis)) {
             if (parameters.items.len != 0) {
                 self.expectSymbol(lexer.TokenSymbol.Comma);
                 self.advance();
+            }
+            if (external and self.expectCurrent(")").data.isSymbol(lexer.TokenSymbol.TripleDot)) {
+                variadic = true;
+                self.advance();
+                self.expectSymbol(lexer.TokenSymbol.RightParenthesis);
+                break;
             }
             const param_name = self.expectIdentifier();
             self.advance();
@@ -1238,6 +1252,7 @@ pub const Parser = struct {
                 .parameters = parameters,
                 .return_type = return_type,
                 .external = external,
+                .variadic = variadic,
                 .constructor = constructor,
                 .body = body
             }
@@ -1246,6 +1261,7 @@ pub const Parser = struct {
         // Update symbol ID
         const symbol_ref = &self.symbols.items[sym_count];
         symbol_ref.node_id = node.id;
+        symbol_ref.data.Function.variadic = variadic;
 
         // Pop all children
         var i: usize = self.symbols.items.len;
