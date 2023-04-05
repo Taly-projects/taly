@@ -794,6 +794,50 @@ pub const TypeNode = struct {
 
 };
 
+pub const ExtendStatementNode = struct {
+    name: []const u8,
+    body: NodeList,
+
+    pub fn writeXML(self: *const ExtendStatementNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<extend id=\"{d}\">\n", .{id});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<name>{s}</name>", .{self.name});
+
+        if (self.body.items.len != 0) {
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try writer.writeAll("<body>\n");
+
+            for (self.body.items) |node| {
+                try node.writeXML(writer, tabs + 2);
+            }
+
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try writer.writeAll("</body>\n");
+        }
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</extend>\n");      
+    }
+    
+};
+
 // Compiler Instruction - Pure C
 pub const CI_PureCNode = struct {
     code: []const u8,
@@ -825,6 +869,7 @@ pub const NodeTag = enum {
     Match,
     Class,
     Type,
+    ExtendStatement,
     CI_PureC,
 };
 
@@ -846,6 +891,7 @@ pub const NodeData = union(NodeTag) {
     Match: MatchStatement,
     Class: ClassNode,
     Type: TypeNode,
+    ExtendStatement: ExtendStatementNode,
     CI_PureC: CI_PureCNode,
 
     pub fn makeNode(self: NodeData) Node {
@@ -871,6 +917,7 @@ pub const NodeData = union(NodeTag) {
             .Match => |node| return node.writeXML(writer, tabs, id),
             .Class => |node| return node.writeXML(writer, tabs, id),
             .Type => |node| return node.writeXML(writer, tabs, id),
+            .ExtendStatement => |node| return node.writeXML(writer, tabs, id),
             .CI_PureC => |node| return node.writeXML(writer, tabs, id),
         }
     }
@@ -899,6 +946,7 @@ pub const NodeData = union(NodeTag) {
             .Match => |node| node.writeXML(writer, 0) catch unreachable,
             .Class => |node| node.writeXML(writer, 0) catch unreachable,
             .Type => |node| node.writeXML(writer, 0) catch unreachable,
+            .ExtendStatement => |node| node.writeXML(writer, 0) catch unreachable,
             .CI_PureC => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
@@ -938,6 +986,7 @@ pub const NodeInfo = struct {
     symbol_call: ?usize = null,
     data_type: ?[]const u8 = null,
     renamed: ?[]const u8 = null,
+    aside_symbols: ?symbol.SymbolList = null,
 
     pub fn writeXML(self: *const NodeInfo, writer: anytype) anyerror!void {
         try std.fmt.format(writer, "<node-info id=\"{d}\">\n", .{self.node_id});
@@ -961,6 +1010,10 @@ pub const NodeInfo = struct {
 
         if (self.renamed) |renamed| {
             try std.fmt.format(writer, "\t<renamed>{s}</renamed>\n", .{renamed});
+        }
+
+        if (self.aside_symbols) |aside| {
+            try std.fmt.format(writer, "\t<aside-symbols>{}</aside-symbols>\n", .{aside.items.len});
         }
 
         try writer.writeAll("</node-info>\n");
@@ -2243,6 +2296,68 @@ pub const Parser = struct {
         return node;
     }
 
+    fn parseExtend(self:* Parser) Node {
+        const start = self.getCurrent().?.start;
+        self.advance();
+        const name = self.expectIdentifier();
+        var end = self.getCurrent().?.end;
+        self.advance();
+
+        // Generate symbol
+        const sym_count = self.symbols.items.len;
+
+        self.tabs += 1;
+        var tab_count: usize = 0;
+        var first = true;
+        var body = NodeList.init(self.allocator);
+        var last_index = self.index;
+        while (self.getCurrent() != null) {
+            const current = self.getCurrent().?;
+            if (current.data.isFormat(lexer.TokenFormat.Tab)) {
+                tab_count += 1;
+                self.advance();
+            } else if (current.data.isFormat(lexer.TokenFormat.NewLine)) {
+                tab_count = 0;
+                first = false;
+                self.advance();
+            } else if (first or tab_count >= self.tabs) {
+                const node = self.parseCurrent();
+                body.append(node) catch unreachable;
+                last_index = self.index;
+                end = self.get_infos(node.id).position.end;
+            } else {
+                break;
+            }
+        }
+        self.tabs -= 1;
+        self.index = last_index;
+
+        const node = Node.gen(NodeData {
+            .ExtendStatement = ExtendStatementNode {
+                .name = name,
+                .body = body
+            }
+        });
+
+        // Pop all children
+        var symbols = symbol.SymbolList.init(self.allocator); 
+        var i: usize = self.symbols.items.len;
+        while (i > sym_count) {
+            const child = self.symbols.pop();
+            symbols.append(child) catch unreachable;
+            i -= 1;
+        }
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end),
+            .aside_symbols = symbols
+        }) catch unreachable;
+        
+        return node;
+    }
+
     fn parseTypeAlias(self: *Parser) Node {
         const start = self.getCurrent().?.start;
         self.advance();
@@ -2303,6 +2418,7 @@ pub const Parser = struct {
             .Class => return self.parseClass(),
             .New => return self.parseFunctionDefinition(false, true, start),
             .Type => return self.parseTypeAlias(),
+            .Extend => return self.parseExtend(),
             else => {
                 const current = self.getCurrent().?;
                 current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);

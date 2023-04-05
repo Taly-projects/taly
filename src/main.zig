@@ -54,6 +54,10 @@ pub fn main() !void {
 
     try taly.generate(arena.allocator(), out_dir);
 
+    if (print_ast) {
+        try taly.generateAst(arena.allocator(), out_dir);
+    }
+
     if (run) {
         try taly.run(arena.allocator(), "out/");
     }

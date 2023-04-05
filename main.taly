@@ -1,8 +1,11 @@
 use "test"
 use "person"
 
+extend Person
+    fn getName(): c_string => return (self.name)
+
 # main function
 fn main() =>
     var person: Person2 = Person2.create("John", 12)
     person.sayHello()
-    sayHello()
+    sayHello(person.getName())

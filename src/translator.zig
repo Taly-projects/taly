@@ -1311,6 +1311,28 @@ pub const Translator = struct {
         };
     }
 
+    fn translateExtend(self: *Translator, node: parser.Node) NodeList {
+        var nodes = NodeList.init(self.allocator);
+
+        const extend = node.data.ExtendStatement;
+
+        var methods = parser.NodeList.init(self.allocator);
+        
+        for (extend.body.items) |child| {
+            if (child.data == parser.NodeTag.FunctionDefinition) {
+                methods.append(child) catch unreachable;
+            } else {
+                @panic("Unexpected node in class!");
+            }
+        }
+
+        for (methods.items) |method| {
+            nodes.appendSlice(self.translateNode(method).items) catch unreachable;
+        }
+
+        return nodes;
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
         switch (node.data) {
@@ -1331,6 +1353,7 @@ pub const Translator = struct {
             .Match => nodes.appendSlice(self.translateMatchStatement(node).items) catch unreachable,
             .Class => nodes.appendSlice(self.translateClass(node).items) catch unreachable,
             .Type => self.translateTypeAlias(node),
+            .ExtendStatement => nodes.appendSlice(self.translateExtend(node).items) catch unreachable,
             .CI_PureC => nodes.append(self.translateCIPureC(node)) catch unreachable,
         }
         return nodes;

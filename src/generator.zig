@@ -538,7 +538,8 @@ pub const Generator = struct {
                     @panic("todo");
                 }
             } else {
-                @panic("todo");
+                param.writeXML(std.io.getStdOut().writer(), 0) catch unreachable;
+                @panic("todo (no info type)");
             }
 
             i += 1;
@@ -565,13 +566,17 @@ pub const Generator = struct {
     }
 
     fn generateReturn(self: *Generator, node: parser.Node) parser.Node {
-        // TODO: Check value node
         // TODO: Generate type info for node (based on type of value node)
         // TODO: Check scope (possible here)
 
-        _ = self;
+        var new_node = node;
+
+        // Check value node
+        if (node.data.Return.value) |value| {
+            new_node.data.Return.value.?.* = self.generateNode(value.*);
+        }
         
-        return node;
+        return new_node;
     }
 
     fn generateVariableDefinition(self: *Generator, node: parser.Node) parser.Node {
@@ -876,6 +881,45 @@ pub const Generator = struct {
         return new_node;
     }
 
+    fn generateExtend(self: *Generator, node: parser.Node) parser.Node {
+        // Check if possible
+        if (!self.scope.acceptsClassDefinition()) {
+            @panic("todo");
+        }
+
+        var new_node = node;
+
+        const info = self.getInfo(node.id).?;
+
+        // Get matching class
+        const class_sym = self.getClass(node.data.ExtendStatement.name) orelse {
+            @panic("todo");
+        };
+
+        // Move symbols
+        class_sym.data.Class.children.appendSlice(info.aside_symbols.?.items) catch unreachable;
+
+        // Enter class scope
+        const scope = Scope {
+            .parent = self.allocator.create(Scope) catch unreachable,
+            .scope = class_sym
+        };
+        scope.parent.?.* = self.scope;
+        self.scope = scope;
+
+        // Check body
+        var body = parser.NodeList.init(self.allocator);
+        for (node.data.ExtendStatement.body.items) |child| {
+            body.append(self.generateNode(child)) catch unreachable;
+        }
+        new_node.data.ExtendStatement.body = body;
+        
+        // Exit scope
+        self.scope = self.scope.parent.?.*;
+                
+        return new_node;
+    }
+
     fn generateNode(self: *Generator, node: parser.Node) parser.Node {
         switch (node.data) {
             .Value => return self.generateValue(node),
@@ -894,6 +938,7 @@ pub const Generator = struct {
             .Break => return self.generateBreak(node),
             .Match => return self.generateMatch(node),
             .Class => return self.generateClass(node),
+            .ExtendStatement => return self.generateExtend(node),
             else => return node
         }
     }

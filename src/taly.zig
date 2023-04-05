@@ -108,6 +108,34 @@ pub fn generate(allocator: std.mem.Allocator, out_dir: std.fs.Dir) !void {
     }
 }
 
+pub fn generateAst(allocator: std.mem.Allocator, out_dir: std.fs.Dir) !void {
+    for (dependencies.?.items) |dependency| {
+        var path = try std.mem.concat(allocator, u8, &[_][]const u8 {dependency.name, "_ast.xml"});
+
+        var file = try out_dir.createFile(path, .{});
+        for (dependency.ast.items) |node| {
+            try node.writeXML(file.writer(), 0);
+        }
+
+        file.close();
+        path = try std.mem.concat(allocator, u8, &[_][]const u8 {dependency.name, "_infos.xml"});
+
+        file = try out_dir.createFile(path, .{});
+        for (dependency.node_infos.items) |info| {
+            try info.writeXML(file.writer());
+        }
+
+        file.close();
+        path = try std.mem.concat(allocator, u8, &[_][]const u8 {dependency.name, "_symbols.xml"});
+
+        file = try out_dir.createFile(path, .{});
+        for (dependency.symbols.items) |sym| {
+            try sym.writeXML(file.writer(), 0);
+        }
+    }
+    
+}
+
 pub fn run(allocator: std.mem.Allocator, out_dir: []const u8) !void {
     var list = std.ArrayList([]const u8).init(allocator);
     try list.append("gcc");
