@@ -885,7 +885,14 @@ pub const Translator = struct {
                     .path = use.path[2..]
                 }
             }) catch unreachable;
-        } 
+        } else {
+            self.header.append(Node {
+                .Include = .{
+                    .std = false,
+                    .path = use.path
+                }
+            }) catch unreachable;
+        }
     }
 
     fn translateReturn(self: *Translator, node: parser.Node) NodeList {
@@ -1329,13 +1336,12 @@ pub const Translator = struct {
         return nodes;
     }
 
-    pub fn translate(self: *Translator) Project {
-        var project = Project.init(self.allocator);
-        var main_file = project.getFile("main"); // TODO: Get name from file_name
+    pub fn translate(self: *Translator, name: []const u8) File {
+        var file = File.init(name, self.allocator);
 
         while (self.getCurrent()) |current| {
             const nodes = self.translateNode(current);
-            main_file.source.appendSlice(nodes.items) catch unreachable;
+            file.source.appendSlice(nodes.items) catch unreachable;
 
             // const file = if (std.mem.eql(u8, res.name, "_")) project.getFile("main")
             // else project.getFile(res.name);
@@ -1343,24 +1349,22 @@ pub const Translator = struct {
             self.advance();
         }
 
-        main_file.header.appendSlice(self.header.items) catch unreachable;
+        file.header.appendSlice(self.header.items) catch unreachable;
 
         // Generate links between .h and .c
-        for (project.files.items) |*file| {
-            if (file.header.items.len != 0 and file.source.items.len != 0) {
-                var new_source = NodeList.init(self.allocator);
-                new_source.append(Node {
-                    .Include = . {
-                        .std = false,
-                        .path = file.name
-                    }
-                }) catch unreachable;
-                new_source.appendSlice(file.source.items) catch unreachable;
-                file.source = new_source;
-            }
+        if (file.header.items.len != 0 and file.source.items.len != 0) {
+            var new_source = NodeList.init(self.allocator);
+            new_source.append(Node {
+                .Include = . {
+                    .std = false,
+                    .path = file.name
+                }
+            }) catch unreachable;
+            new_source.appendSlice(file.source.items) catch unreachable;
+            file.source = new_source;
         }
 
-        return project;
+        return file;
     }
 
 };

@@ -1,6 +1,7 @@
 const std = @import("std");
 const position = @import("position.zig");
 const parser = @import("parser.zig");
+const taly = @import("taly.zig");
 
 pub const Scope = struct {
     parent: ?*Scope = null,
@@ -360,12 +361,13 @@ pub const Generator = struct {
     }
 
     fn generateValue(self: *Generator, node: parser.Node) parser.Node {
+        const info = self.getInfo(node.id).?;
+        
         // Check if possible
         if (!self.scope.acceptsStatement()) {
-            @panic("todo");
+            info.position.errorMessage("Unexpected Value Node!", .{}, self.src, self.file_name);
         }
 
-        const info = self.getInfo(node.id).?;
         
         // Genreate type info
         switch (node.data.Value) {
@@ -379,17 +381,18 @@ pub const Generator = struct {
     }
 
     fn generateFunctionDefinition(self: *Generator, node: parser.Node) parser.Node {
+        const info = self.getInfo(node.id).?;
+
         // Check if possible
         if (!self.scope.acceptsFunctionDefinition()) {
-            @panic("todo");
+            info.position.errorMessage("Unexpected Function Definition!", .{}, self.src, self.file_name);
         }
 
         // Clone node to be able to modify it while keeping the previous values
         var new_node = node;
 
         // Enter scope
-        const infos = self.getInfo(node.id).?;
-        const sym = self.getSymbol(infos.symbol_def.?).?;
+        const sym = self.getSymbol(info.symbol_def.?).?;
         const scope = Scope {
             .parent = self.allocator.create(Scope) catch unreachable,
             .scope = sym
@@ -404,7 +407,7 @@ pub const Generator = struct {
         var is_constructor = false;
         var parameters = parser.FunctionDefinitionParameters.init(self.allocator);
         if (self.scope.getParentClass()) |class| {
-            infos.renamed = std.mem.concat(self.allocator, u8, &[_][]const u8 {class.data.Class.name, "_", node.data.FunctionDefinition.name}) catch unreachable;
+            info.renamed = std.mem.concat(self.allocator, u8, &[_][]const u8 {class.data.Class.name, "_", node.data.FunctionDefinition.name}) catch unreachable;
 
             if (node.data.FunctionDefinition.constructor) {
                 // Generate _self_data
@@ -548,6 +551,16 @@ pub const Generator = struct {
         // Generate symbol link
         info.symbol_call = function_symbol.id;
         
+        return node;
+    }
+
+    fn generateUse(self: *Generator, node: parser.Node) parser.Node {
+        if (!std.mem.startsWith(u8, node.data.Use.path, "std-") and !std.mem.startsWith(u8, node.data.Use.path, "c-")) {
+            const data = taly.CompilerData.compile(self.allocator, std.mem.concat(self.allocator, u8, &[_][]const u8 {node.data.Use.path, ".taly"}) catch unreachable) catch unreachable;
+            self.infos.appendSlice(data.node_infos.items) catch unreachable;
+            self.symbols.appendSlice(data.symbols.items) catch unreachable;
+        }
+
         return node;
     }
 
@@ -868,6 +881,7 @@ pub const Generator = struct {
             .Value => return self.generateValue(node),
             .FunctionDefinition => return self.generateFunctionDefinition(node),
             .FunctionCall => return self.generateFunctionCall(node),
+            .Use => return self.generateUse(node),
             .Return => return self.generateReturn(node),
             .VariableDefinition => return self.generateVariableDefinition(node),
             .VariableCall => return self.generateVariableCall(node),
