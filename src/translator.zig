@@ -554,6 +554,21 @@ pub const StructNode = struct {
     }
 };
 
+pub const TypedefNode = struct {
+    name: []const u8,
+    value: []const u8,
+
+    pub fn writeC(self: *const TypedefNode, writer: anytype, tabs: usize) anyerror!bool {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "typedef {s} {s}", .{self.value, self.name});
+
+        return true;
+    }
+};
+
 pub const CI_PureCNode = struct {
     code: []const u8,
 
@@ -600,6 +615,7 @@ pub const NodeTag = enum {
     Continue,
     Break,
     Struct,
+    Typedef,
     CI_PureC,
     CI_PreC,
 };
@@ -621,6 +637,7 @@ pub const Node = union(NodeTag) {
     Continue: ContinueNode,
     Break: BreakNode,
     Struct: StructNode,
+    Typedef: TypedefNode,
     CI_PureC: CI_PureCNode,
     CI_PreC: CI_PreCNode,
 
@@ -642,6 +659,7 @@ pub const Node = union(NodeTag) {
             .Continue => |node| return node.writeC(writer, tabs),
             .Break => |node| return node.writeC(writer, tabs),
             .Struct => |node| return node.writeC(writer, tabs),
+            .Typedef => |node| return node.writeC(writer, tabs),
             .CI_PureC => |node| return node.writeC(writer, tabs),
             .CI_PreC => |node| return node.writeC(writer, tabs),
         }
@@ -867,7 +885,14 @@ pub const Translator = struct {
                     .path = use.path[2..]
                 }
             }) catch unreachable;
-        } 
+        } else {
+            self.header.append(Node {
+                .Include = .{
+                    .std = false,
+                    .path = use.path
+                }
+            }) catch unreachable;
+        }
     }
 
     fn translateReturn(self: *Translator, node: parser.Node) NodeList {
@@ -1267,6 +1292,15 @@ pub const Translator = struct {
         return nodes;
     }
 
+    fn translateTypeAlias(self: *Translator, node: parser.Node) void {
+        self.header.append(Node {
+            .Typedef = TypedefNode {
+                .name = node.data.Type.name,
+                .value = node.data.Type.value
+            }
+        }) catch unreachable;
+    }
+
     fn translateCIPureC(self: *Translator, node: parser.Node) Node {
         _ = self;
 
@@ -1275,6 +1309,28 @@ pub const Translator = struct {
                 .code = node.data.CI_PureC.code
             }
         };
+    }
+
+    fn translateExtend(self: *Translator, node: parser.Node) NodeList {
+        var nodes = NodeList.init(self.allocator);
+
+        const extend = node.data.ExtendStatement;
+
+        var methods = parser.NodeList.init(self.allocator);
+        
+        for (extend.body.items) |child| {
+            if (child.data == parser.NodeTag.FunctionDefinition) {
+                methods.append(child) catch unreachable;
+            } else {
+                @panic("Unexpected node in class!");
+            }
+        }
+
+        for (methods.items) |method| {
+            nodes.appendSlice(self.translateNode(method).items) catch unreachable;
+        }
+
+        return nodes;
     }
 
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
@@ -1296,18 +1352,19 @@ pub const Translator = struct {
             .Break => nodes.append(self.translateBreak(node)) catch unreachable,
             .Match => nodes.appendSlice(self.translateMatchStatement(node).items) catch unreachable,
             .Class => nodes.appendSlice(self.translateClass(node).items) catch unreachable,
+            .Type => self.translateTypeAlias(node),
+            .ExtendStatement => nodes.appendSlice(self.translateExtend(node).items) catch unreachable,
             .CI_PureC => nodes.append(self.translateCIPureC(node)) catch unreachable,
         }
         return nodes;
     }
 
-    pub fn translate(self: *Translator) Project {
-        var project = Project.init(self.allocator);
-        var main_file = project.getFile("main"); // TODO: Get name from file_name
+    pub fn translate(self: *Translator, name: []const u8) File {
+        var file = File.init(name, self.allocator);
 
         while (self.getCurrent()) |current| {
             const nodes = self.translateNode(current);
-            main_file.source.appendSlice(nodes.items) catch unreachable;
+            file.source.appendSlice(nodes.items) catch unreachable;
 
             // const file = if (std.mem.eql(u8, res.name, "_")) project.getFile("main")
             // else project.getFile(res.name);
@@ -1315,24 +1372,22 @@ pub const Translator = struct {
             self.advance();
         }
 
-        main_file.header.appendSlice(self.header.items) catch unreachable;
+        file.header.appendSlice(self.header.items) catch unreachable;
 
         // Generate links between .h and .c
-        for (project.files.items) |*file| {
-            if (file.header.items.len != 0 and file.source.items.len != 0) {
-                var new_source = NodeList.init(self.allocator);
-                new_source.append(Node {
-                    .Include = . {
-                        .std = false,
-                        .path = file.name
-                    }
-                }) catch unreachable;
-                new_source.appendSlice(file.source.items) catch unreachable;
-                file.source = new_source;
-            }
+        if (file.header.items.len != 0 and file.source.items.len != 0) {
+            var new_source = NodeList.init(self.allocator);
+            new_source.append(Node {
+                .Include = . {
+                    .std = false,
+                    .path = file.name
+                }
+            }) catch unreachable;
+            new_source.appendSlice(file.source.items) catch unreachable;
+            file.source = new_source;
         }
 
-        return project;
+        return file;
     }
 
 };

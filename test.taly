@@ -1,0 +1,5 @@
+use "std-stdio"
+
+extern fn printf(msg: c_string, ...)
+
+fn sayHello(name: c_string) => printf("Hello %s\n", name)

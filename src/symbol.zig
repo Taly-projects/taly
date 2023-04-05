@@ -50,6 +50,7 @@ pub const VariableSymbol = struct {
 pub const FunctionSymbol = struct {
     external: bool,
     constructor: bool,
+    variadic: bool = false,
     name: []const u8,
     parameters: parser.FunctionDefinitionParameters,
     return_type: ?[]const u8,
@@ -67,6 +68,12 @@ pub const FunctionSymbol = struct {
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
 
         try std.fmt.format(writer, "<external>{}</external>\n", .{self.external});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<variadic>{}</variadic>\n", .{self.variadic});
 
         // Add tabs
         i = 0;
@@ -214,11 +221,43 @@ pub const BlockSymbol = struct {
     }
 };
 
+pub const TypeAliasSymbol = struct {
+    name: []const u8,
+    value: []const u8,
+
+    pub fn writeXML(self: *const TypeAliasSymbol, writer: anytype, tabs: usize, id: usize, node_id: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<type-alias id=\"{d}\" node-id=\"{d}\">\n", .{id, node_id});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<value>{s}</value>\n", .{self.value});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</type-alias>\n");
+    }
+};
+
 pub const SymbolTag = enum {
     Variable,
     Function,
     Class,
     Block,
+    TypeAlias,
 };
 
 pub const SymbolData = union(SymbolTag) {
@@ -226,6 +265,7 @@ pub const SymbolData = union(SymbolTag) {
     Function: FunctionSymbol,
     Class: ClassSymbol,
     Block: BlockSymbol,
+    TypeAlias: TypeAliasSymbol,
 };
 
 pub const Symbol = struct {
@@ -280,12 +320,21 @@ pub const Symbol = struct {
         return null;
     }
 
+    pub fn getAlias(self: *Symbol, name: []const u8) ?*Symbol {
+        if (self.data == SymbolTag.TypeAlias) {
+            if (std.mem.eql(u8, self.data.TypeAlias.name, name)) return self;
+        }
+
+        return null;
+    }
+
     pub fn writeXML(self: *const Symbol, writer: anytype, tabs: usize) !void {
         switch (self.data) {
             .Variable => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
             .Function => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
             .Class => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
             .Block => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
+            .TypeAlias => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
         }
     }
 };

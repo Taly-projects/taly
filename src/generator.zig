@@ -1,6 +1,7 @@
 const std = @import("std");
 const position = @import("position.zig");
 const parser = @import("parser.zig");
+const taly = @import("taly.zig");
 
 pub const Scope = struct {
     parent: ?*Scope = null,
@@ -239,6 +240,35 @@ pub const Scope = struct {
    
         return null;
     }
+    
+    pub fn getAlias(self: *const Scope, root: *const parser.SymbolList, name: []const u8) ?*parser.Symbol {
+        if (self.entered) |entered| {
+            _ = entered;
+            return null; 
+        }
+
+        if (self.scope) |scope| {
+            _ = scope;
+        } else {
+            // Root
+            for (root.items) |*sym| {
+                switch (sym.data) {
+                    .TypeAlias => |alias| {
+                        if (std.mem.eql(u8, alias.name, name)) {
+                            return sym;
+                        } 
+                    },
+                    else => {}
+                }
+            }
+        }
+
+        if (self.parent) |parent| {
+            return parent.getAlias(root, name);
+        }
+   
+        return null;
+    }
 
     pub fn getParentClass(self: *const Scope) ?*parser.Symbol {
         if (self.parent) |parent| {
@@ -255,7 +285,10 @@ pub const Scope = struct {
     }
 };
 
+
 pub const Generator = struct {
+    file_name: []const u8,
+    src: []const u8,
     allocator: std.mem.Allocator,
     ast: parser.NodeList,
     infos: parser.NodeInfos,
@@ -263,8 +296,10 @@ pub const Generator = struct {
     scope: Scope = Scope{},
     index: usize = 0,
 
-    pub fn init(ast: parser.NodeList, infos: parser.NodeInfos, symbols: parser.SymbolList, allocator: std.mem.Allocator) Generator {
+    pub fn init(file_name: []const u8, src: []const u8, ast: parser.NodeList, infos: parser.NodeInfos, symbols: parser.SymbolList, allocator: std.mem.Allocator) Generator {
         return Generator {
+            .file_name = file_name,
+            .src = src,
             .allocator = allocator,
             .ast = ast,
             .infos = infos,
@@ -304,6 +339,14 @@ pub const Generator = struct {
         return null;
     }
 
+    fn getAlias(self: *const Generator, name: []const u8) ?*parser.Symbol {
+        for (self.symbols.items) |*sym| {
+            if (sym.getAlias(name)) |sym2| return sym2;
+        }
+
+        return null;
+    }
+
     fn addSymbol(self: *Generator, symbol: parser.Symbol) void {
         if (self.scope.scope) |scope| {
             switch (scope.data) {
@@ -318,12 +361,13 @@ pub const Generator = struct {
     }
 
     fn generateValue(self: *Generator, node: parser.Node) parser.Node {
+        const info = self.getInfo(node.id).?;
+        
         // Check if possible
         if (!self.scope.acceptsStatement()) {
-            @panic("todo");
+            info.position.errorMessage("Unexpected Value Node!", .{}, self.src, self.file_name);
         }
 
-        const info = self.getInfo(node.id).?;
         
         // Genreate type info
         switch (node.data.Value) {
@@ -337,17 +381,18 @@ pub const Generator = struct {
     }
 
     fn generateFunctionDefinition(self: *Generator, node: parser.Node) parser.Node {
+        const info = self.getInfo(node.id).?;
+
         // Check if possible
         if (!self.scope.acceptsFunctionDefinition()) {
-            @panic("todo");
+            info.position.errorMessage("Unexpected Function Definition!", .{}, self.src, self.file_name);
         }
 
         // Clone node to be able to modify it while keeping the previous values
         var new_node = node;
 
         // Enter scope
-        const infos = self.getInfo(node.id).?;
-        const sym = self.getSymbol(infos.symbol_def.?).?;
+        const sym = self.getSymbol(info.symbol_def.?).?;
         const scope = Scope {
             .parent = self.allocator.create(Scope) catch unreachable,
             .scope = sym
@@ -362,7 +407,7 @@ pub const Generator = struct {
         var is_constructor = false;
         var parameters = parser.FunctionDefinitionParameters.init(self.allocator);
         if (self.scope.getParentClass()) |class| {
-            infos.renamed = std.mem.concat(self.allocator, u8, &[_][]const u8 {class.data.Class.name, "_", node.data.FunctionDefinition.name}) catch unreachable;
+            info.renamed = std.mem.concat(self.allocator, u8, &[_][]const u8 {class.data.Class.name, "_", node.data.FunctionDefinition.name}) catch unreachable;
 
             if (node.data.FunctionDefinition.constructor) {
                 // Generate _self_data
@@ -460,35 +505,45 @@ pub const Generator = struct {
 
         // Find function symbol
         const function_symbol = self.scope.getFunction(&self.symbols, node.data.FunctionCall.name) orelse {
-            @panic("todo");
+            const info = self.getInfo(node.id).?;
+            info.position.errorMessage("Function `{s}` not declared!", .{node.data.FunctionCall.name}, self.src, self.file_name);
         };
 
         // Check if parameters match (type + number)
         const specified_param_count = node.data.FunctionCall.parameters.items.len;
         const defined_param_count = function_symbol.data.Function.parameters.items.len;
-        if (specified_param_count > defined_param_count) {
-            @panic("todo");
+        
+        if (!function_symbol.data.Function.variadic and specified_param_count > defined_param_count) {
+            const info = self.getInfo(node.id).?;
+            info.position.errorMessageReturn("Not many parameters specified for function `{s}` !", .{node.data.FunctionCall.name}, self.src, self.file_name);
+            const symbol_info = self.getInfo(function_symbol.node_id).?;
+            symbol_info.position.errorMessage("Defined here:", .{}, self.src, self.file_name);
         } else if (specified_param_count < defined_param_count) {
-            @panic("todo");
-        } else {
-
+            const info = self.getInfo(node.id).?;
+            info.position.errorMessageReturn("Not enough parameters specified for function `{s}` !", .{node.data.FunctionCall.name}, self.src, self.file_name);
+            const symbol_info = self.getInfo(function_symbol.node_id).?;
+            symbol_info.position.errorMessage("Defined here:", .{}, self.src, self.file_name);
         }
 
         var parameters = parser.NodeList.init(self.allocator);
         var i: usize = 0;
         for (node.data.FunctionCall.parameters.items) |param| {
-            const defined_param = function_symbol.data.Function.parameters.items[i];
-
             const generated_param = self.generateNode(param);
             parameters.append(generated_param) catch unreachable;
 
-            const param_info = self.getInfo(generated_param.id).?;
-            if (param_info.data_type) |data_type| {
-                if (!std.mem.eql(u8, defined_param.data_type, data_type)) {
-                    @panic("todo");
+            // Only check type if not part of variadic
+            if (i < defined_param_count) {
+                const defined_param = function_symbol.data.Function.parameters.items[i];
+                
+                const param_info = self.getInfo(generated_param.id).?;
+                if (param_info.data_type) |data_type| {
+                    if (!std.mem.eql(u8, defined_param.data_type, data_type)) {
+                        @panic("todo");
+                    }
+                } else {
+                    param.writeXML(std.io.getStdOut().writer(), 0) catch unreachable;
+                    @panic("todo (no info type)");
                 }
-            } else {
-                @panic("todo");
             }
 
             i += 1;
@@ -504,14 +559,28 @@ pub const Generator = struct {
         return node;
     }
 
+    fn generateUse(self: *Generator, node: parser.Node) parser.Node {
+        if (!std.mem.startsWith(u8, node.data.Use.path, "std-") and !std.mem.startsWith(u8, node.data.Use.path, "c-")) {
+            const data = taly.CompilerData.compile(self.allocator, std.mem.concat(self.allocator, u8, &[_][]const u8 {node.data.Use.path, ".taly"}) catch unreachable) catch unreachable;
+            self.infos.appendSlice(data.node_infos.items) catch unreachable;
+            self.symbols.appendSlice(data.symbols.items) catch unreachable;
+        }
+
+        return node;
+    }
+
     fn generateReturn(self: *Generator, node: parser.Node) parser.Node {
-        // TODO: Check value node
         // TODO: Generate type info for node (based on type of value node)
         // TODO: Check scope (possible here)
 
-        _ = self;
+        var new_node = node;
+
+        // Check value node
+        if (node.data.Return.value) |value| {
+            new_node.data.Return.value.?.* = self.generateNode(value.*);
+        }
         
-        return node;
+        return new_node;
     }
 
     fn generateVariableDefinition(self: *Generator, node: parser.Node) parser.Node {
@@ -529,8 +598,26 @@ pub const Generator = struct {
 
             const value_info = self.getInfo(gen_value.id).?;
             if (value_info.data_type) |data_type| {
+                std.log.info("{s} {s}", .{data_type, node.data.VariableDefinition.data_type});
                 if (!std.mem.eql(u8, data_type, node.data.VariableDefinition.data_type)) {
-                    @panic("todo");
+                    var found = false;
+                    if (self.getAlias(data_type)) |alias| {
+                        if (std.mem.eql(u8, alias.data.TypeAlias.value, node.data.VariableDefinition.data_type)) {
+                            found = true;
+                        }
+                    }
+
+                    if (!found) {
+                        if (self.getAlias(node.data.VariableDefinition.data_type)) |alias| {
+                            if (std.mem.eql(u8, alias.data.TypeAlias.value, data_type)) {
+                                found = true;
+                            }
+                        }
+                    }
+
+                    if (!found) {
+                        @panic("todo");
+                    }
                 }
             } else {
                 @panic("todo");
@@ -556,10 +643,14 @@ pub const Generator = struct {
         // Check if exists
         var sym: *parser.Symbol = undefined;
 
-        if (self.scope.getVariable(&self.symbols, node.data.VariableCall.name)) |variable| {
+        const var_name = if (self.scope.getAlias(&self.symbols, node.data.VariableCall.name)) |variable| blk: {
+            break :blk variable.data.TypeAlias.value;
+        } else node.data.VariableCall.name;
+
+        if (self.scope.getVariable(&self.symbols, var_name)) |variable| {
             sym = variable;
             info.data_type = sym.data.Variable.data_type;
-        } else if (self.scope.getClass(&self.symbols, node.data.VariableCall.name)) |class| {
+        } else if (self.scope.getClass(&self.symbols, var_name)) |class| {
             sym = class;
         } else {
             std.log.info("Not found: {s} in:", .{node.data.VariableCall.name});
@@ -585,8 +676,6 @@ pub const Generator = struct {
         // TODO: else check if types match (later change to implementation)
         // TODO: Generate type info
 
-        // TODO: Only accept field capturing when using self
-
         var new_node = node;
 
         if (node.data.BinaryOperation.operator == parser.Operator.Access) {
@@ -603,9 +692,13 @@ pub const Generator = struct {
 
             var can_access_field = false;
             if (sym.data == parser.SymbolTag.Variable) {
-                const class_name = if (std.mem.endsWith(u8, sym.data.Variable.data_type, "*")) blk: {
+                var class_name = if (std.mem.endsWith(u8, sym.data.Variable.data_type, "*")) blk: {
                     break :blk sym.data.Variable.data_type[0..(sym.data.Variable.data_type.len - 1)];
                 } else sym.data.Variable.data_type;
+
+                if (self.getAlias(class_name)) |sym_alias| {
+                    class_name = sym_alias.data.TypeAlias.value;
+                } 
 
                 if (self.getClass(class_name)) |sym_class| {
                     self.scope.entered = sym_class;
@@ -792,11 +885,51 @@ pub const Generator = struct {
         return new_node;
     }
 
+    fn generateExtend(self: *Generator, node: parser.Node) parser.Node {
+        // Check if possible
+        if (!self.scope.acceptsClassDefinition()) {
+            @panic("todo");
+        }
+
+        var new_node = node;
+
+        const info = self.getInfo(node.id).?;
+
+        // Get matching class
+        const class_sym = self.getClass(node.data.ExtendStatement.name) orelse {
+            @panic("todo");
+        };
+
+        // Move symbols
+        class_sym.data.Class.children.appendSlice(info.aside_symbols.?.items) catch unreachable;
+
+        // Enter class scope
+        const scope = Scope {
+            .parent = self.allocator.create(Scope) catch unreachable,
+            .scope = class_sym
+        };
+        scope.parent.?.* = self.scope;
+        self.scope = scope;
+
+        // Check body
+        var body = parser.NodeList.init(self.allocator);
+        for (node.data.ExtendStatement.body.items) |child| {
+            body.append(self.generateNode(child)) catch unreachable;
+        }
+        new_node.data.ExtendStatement.body = body;
+        
+        // Exit scope
+        self.scope = self.scope.parent.?.*;
+                
+        return new_node;
+    }
+
     fn generateNode(self: *Generator, node: parser.Node) parser.Node {
         switch (node.data) {
             .Value => return self.generateValue(node),
             .FunctionDefinition => return self.generateFunctionDefinition(node),
             .FunctionCall => return self.generateFunctionCall(node),
+            .Use => return self.generateUse(node),
             .Return => return self.generateReturn(node),
             .VariableDefinition => return self.generateVariableDefinition(node),
             .VariableCall => return self.generateVariableCall(node),
@@ -809,6 +942,7 @@ pub const Generator = struct {
             .Break => return self.generateBreak(node),
             .Match => return self.generateMatch(node),
             .Class => return self.generateClass(node),
+            .ExtendStatement => return self.generateExtend(node),
             else => return node
         }
     }

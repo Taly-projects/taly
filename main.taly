@@ -1,18 +1,11 @@
-use "std-stdio"
+use "test"
+use "person"
 
-extern fn printf(msg: c_string, param: c_string)
-
-class Person
-    var name: c_string
-    var age: c_int
-
-    new create(name: c_string, age: c_int) =>
-        self.name = name
-        self.age = age
-
-    fn sayHello() => printf("Hello I'm %s\n", self.name)
+extend Person
+    fn getName(): c_string => return (self.name)
 
 # main function
 fn main() =>
-    var person: Person = Person.create("John", 12)
+    var person: Person2 = Person2.create("John", 12)
     person.sayHello()
+    sayHello(person.getName())

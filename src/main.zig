@@ -3,6 +3,10 @@ const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const translator = @import("translator.zig");
 const generator = @import("generator.zig");
+const taly = @import("taly.zig");
+
+// Run command:
+// clear && zig build run -freference-trace -- main.taly --ast --run
 
 pub fn main() !void {
     const stdout = std.io.getStdOut();
@@ -46,107 +50,119 @@ pub fn main() !void {
     var out_dir = try std.fs.cwd().openDir("out", .{});
     defer out_dir.close();
 
-    // Read Source
-    var file = try std.fs.cwd().openFile(path, .{});
-    const file_size = (try file.stat()).size;
-    var src = try arena.allocator().alloc(u8, file_size);
-    try file.reader().readNoEof(src);
+    _ = try taly.CompilerData.compile(arena.allocator(), path);
 
-    var lex = lexer.Lexer.init(path, src);
-    const tokens = lex.tokenize(arena.allocator());
-
-    // for (tokens.items) |token| {
-    //     std.fmt.format(stdout.writer(), "{full}\n", .{token.data}) catch unreachable;
-    // }
-
-    var par = parser.Parser.init(path, src, tokens, arena.allocator());
-    const par_res = par.parse();
-    const ast = par_res.@"0";
-    const infos = par_res.@"1";
-    const symbols = par_res.@"2";
-
-    // Generator
-    var gen = generator.Generator.init(ast, infos, symbols, arena.allocator());
-    const gen_res = gen.generate();
-    const gen_ast = gen_res.@"0";
-    const gen_infos = gen_res.@"1";
-    const gen_symbols = gen_res.@"2";
+    try taly.generate(arena.allocator(), out_dir);
 
     if (print_ast) {
-        // Create Output File
-        var ast_out = try out_dir.createFile("ast.xml", .{});
-        defer ast_out.close();
-
-        for (gen_ast.items) |node| {
-            node.writeXML(ast_out.writer(), 0) catch unreachable;
-        }
-        // Create Output File
-        var infos_out = try out_dir.createFile("infos.xml", .{});
-        defer infos_out.close();
-
-        for (gen_infos.items) |info| {
-            info.writeXML(infos_out.writer()) catch unreachable;
-        }
-        // Create Output File
-        var symbols_out = try out_dir.createFile("symbols.xml", .{});
-        defer symbols_out.close();
-
-        for (gen_symbols.items) |sym| {
-            sym.writeXML(symbols_out.writer(), 0) catch unreachable;
-        }
+        try taly.generateAst(arena.allocator(), out_dir);
     }
-    
-    // Translator
-    var tra = translator.Translator.init(gen_ast, gen_infos, gen_symbols, arena.allocator());
-    const c_project = tra.translate();
-
-    for (c_project.files.items) |c_file| {
-        var file_source_name = arena.allocator().alloc(u8, c_file.name.len + 2) catch unreachable;
-        std.mem.copy(u8, file_source_name, c_file.name);
-        file_source_name[c_file.name.len] = '.';
-        file_source_name[c_file.name.len + 1] = 'c';
-
-        var file_header_name = arena.allocator().alloc(u8, c_file.name.len + 2) catch unreachable;
-        std.mem.copy(u8, file_header_name, c_file.name);
-        file_header_name[c_file.name.len] = '.';
-        file_header_name[c_file.name.len + 1] = 'h';
-
-
-        var c_out = try out_dir.createFile(file_source_name, .{});
-
-        for (c_file.source.items) |node| {
-            if (node.writeC(c_out.writer(), 0) catch unreachable) {
-                c_out.writeAll(";") catch unreachable;
-            }
-            c_out.writeAll("\n") catch unreachable;
-        }
-
-        c_out.close();
-
-        var h_out = try out_dir.createFile(file_header_name, .{});
-        defer h_out.close();
-
-        for (c_file.header.items) |node| {
-            if (node.writeC(h_out.writer(), 0) catch unreachable) {
-                h_out.writeAll(";") catch unreachable;
-            }
-            h_out.writeAll("\n") catch unreachable;
-        }
-        
-    }
-
 
     if (run) {
-        const arg = [_][]const u8 {"gcc", "out/main.c", "-o", "out/main"};
-        var child_process = std.ChildProcess.init(&arg, arena.allocator());
-        var buffer = arena.allocator().alloc(u8, 248) catch unreachable;
-        child_process.cwd = try std.os.getcwd(buffer);
-        _ = try child_process.spawnAndWait();
-
-        const arg2 = [_][]const u8 {"out/main"};
-        child_process.argv = &arg2;
-        _ = try child_process.spawnAndWait();
-    } else {
-        try stdout.writeAll("Compilation successfull!\n");
+        try taly.run(arena.allocator(), "out/");
     }
+
+    // // Read Source
+    // var file = try std.fs.cwd().openFile(path, .{});
+    // const file_size = (try file.stat()).size;
+    // var src = try arena.allocator().alloc(u8, file_size);
+    // try file.reader().readNoEof(src);
+
+    // var lex = lexer.Lexer.init(path, src);
+    // const tokens = lex.tokenize(arena.allocator());
+
+    // // for (tokens.items) |token| {
+    // //     std.fmt.format(stdout.writer(), "{full}\n", .{token.data}) catch unreachable;
+    // // }
+
+    // var par = parser.Parser.init(path, src, tokens, arena.allocator());
+    // const par_res = par.parse();
+    // const ast = par_res.@"0";
+    // const infos = par_res.@"1";
+    // const symbols = par_res.@"2";
+
+    // // Generator
+    // var gen = generator.Generator.init(path, src, ast, infos, symbols, arena.allocator());
+    // const gen_res = gen.generate();
+    // const gen_ast = gen_res.@"0";
+    // const gen_infos = gen_res.@"1";
+    // const gen_symbols = gen_res.@"2";
+
+    // if (print_ast) {
+    //     // Create Output File
+    //     var ast_out = try out_dir.createFile("ast.xml", .{});
+    //     defer ast_out.close();
+
+    //     for (gen_ast.items) |node| {
+    //         node.writeXML(ast_out.writer(), 0) catch unreachable;
+    //     }
+    //     // Create Output File
+    //     var infos_out = try out_dir.createFile("infos.xml", .{});
+    //     defer infos_out.close();
+
+    //     for (gen_infos.items) |info| {
+    //         info.writeXML(infos_out.writer()) catch unreachable;
+    //     }
+    //     // Create Output File
+    //     var symbols_out = try out_dir.createFile("symbols.xml", .{});
+    //     defer symbols_out.close();
+
+    //     for (gen_symbols.items) |sym| {
+    //         sym.writeXML(symbols_out.writer(), 0) catch unreachable;
+    //     }
+    // }
+    
+    // // Translator
+    // var tra = translator.Translator.init(gen_ast, gen_infos, gen_symbols, arena.allocator());
+    // const c_project = tra.translate();
+
+    // for (c_project.files.items) |c_file| {
+    //     var file_source_name = arena.allocator().alloc(u8, c_file.name.len + 2) catch unreachable;
+    //     std.mem.copy(u8, file_source_name, c_file.name);
+    //     file_source_name[c_file.name.len] = '.';
+    //     file_source_name[c_file.name.len + 1] = 'c';
+
+    //     var file_header_name = arena.allocator().alloc(u8, c_file.name.len + 2) catch unreachable;
+    //     std.mem.copy(u8, file_header_name, c_file.name);
+    //     file_header_name[c_file.name.len] = '.';
+    //     file_header_name[c_file.name.len + 1] = 'h';
+
+
+    //     var c_out = try out_dir.createFile(file_source_name, .{});
+
+    //     for (c_file.source.items) |node| {
+    //         if (node.writeC(c_out.writer(), 0) catch unreachable) {
+    //             c_out.writeAll(";") catch unreachable;
+    //         }
+    //         c_out.writeAll("\n") catch unreachable;
+    //     }
+
+    //     c_out.close();
+
+    //     var h_out = try out_dir.createFile(file_header_name, .{});
+    //     defer h_out.close();
+
+    //     for (c_file.header.items) |node| {
+    //         if (node.writeC(h_out.writer(), 0) catch unreachable) {
+    //             h_out.writeAll(";") catch unreachable;
+    //         }
+    //         h_out.writeAll("\n") catch unreachable;
+    //     }
+        
+    // }
+
+
+    // if (run) {
+    //     const arg = [_][]const u8 {"gcc", "out/main.c", "-o", "out/main"};
+    //     var child_process = std.ChildProcess.init(&arg, arena.allocator());
+    //     var buffer = arena.allocator().alloc(u8, 248) catch unreachable;
+    //     child_process.cwd = try std.os.getcwd(buffer);
+    //     _ = try child_process.spawnAndWait();
+
+    //     const arg2 = [_][]const u8 {"out/main"};
+    //     child_process.argv = &arg2;
+    //     _ = try child_process.spawnAndWait();
+    // } else {
+    //     try stdout.writeAll("Compilation successfull!\n");
+    // }
 }
