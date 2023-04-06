@@ -10,22 +10,34 @@ pub var dependencies: ?Dependencies = null;
 pub const CompilerData = struct {
     name: []const u8,
     path: []const u8,
-    tokens: lexer.TokenList,
-    ast: parser.NodeList,
-    node_infos: parser.NodeInfos,
-    symbols: parser.SymbolList,
-    out: translator.File,
+    src: []const u8,
+    tokens: ?lexer.TokenList,
+    ast: ?parser.NodeList,
+    node_infos: ?parser.NodeInfos,
+    symbols: ?parser.SymbolList,
+    out: ?translator.File,
+
+    pub fn get(name: []const u8) ?*CompilerData {
+        if (dependencies == null) return null;
+        for (dependencies.?.items) |*item| {
+            if (std.mem.eql(u8, name, item.name)) return item;
+        }
+        return null;
+    }
 
     pub fn compile(allocator: std.mem.Allocator, path: []const u8) !*CompilerData {
-        // Initialize the allocator
-        if (dependencies == null) {
-            dependencies = Dependencies.init(allocator);
-        }
-
         // Get name from path
         const index = std.mem.lastIndexOf(u8, path, "/") orelse 0;
         const last_index = std.mem.lastIndexOf(u8, path, ".") orelse path.len - 1;
         const name = path[index..last_index];
+
+        // Check if exists 
+        if (get(name)) |x| return x;
+        
+        // Initialize the allocator
+        if (dependencies == null) {
+            dependencies = Dependencies.init(allocator);
+        }
 
         // Read source
         var file = try std.fs.cwd().openFile(path, .{});
@@ -33,9 +45,26 @@ pub const CompilerData = struct {
         var src = try allocator.alloc(u8, file_size);
         try file.reader().readNoEof(src);
 
+        const data = CompilerData {
+            .name = name,
+            .path = path,
+            .src = src,
+            .tokens = null,
+            .ast = null,
+            .node_infos = null,
+            .symbols = null,
+            .out = null
+        };
+
+        dependencies.?.append(data) catch unreachable;
+
+        const ref = &dependencies.?.items[dependencies.?.items.len - 1];
+
         // Lexer
-        var lex = lexer.Lexer.init(path, src);
+        var lex = lexer.Lexer.init(name, src);
         const tokens = lex.tokenize(allocator);
+
+        ref.tokens = tokens;
 
         // Parser
         var par = parser.Parser.init(path, src, tokens, allocator);
@@ -51,23 +80,17 @@ pub const CompilerData = struct {
         const gen_infos = gen_res.@"1";
         const gen_symbols = gen_res.@"2";
 
+        ref.ast = gen_ast;
+        ref.node_infos = gen_infos;
+        ref.symbols = gen_symbols;
+
         // Translator
         var tra = translator.Translator.init(gen_ast, gen_infos, gen_symbols, allocator);
         const tra_out = tra.translate(name);
 
-        const data = CompilerData {
-            .name = name,
-            .path = path,
-            .tokens = tokens,
-            .ast = gen_ast,
-            .node_infos = gen_infos,
-            .symbols = gen_symbols,
-            .out = tra_out
-        };
+        ref.out = tra_out;
 
-        dependencies.?.append(data) catch unreachable;
-
-        return &dependencies.?.items[dependencies.?.items.len - 1];
+        return ref;
     }
 
 };
@@ -87,7 +110,7 @@ pub fn generate(allocator: std.mem.Allocator, out_dir: std.fs.Dir) !void {
 
         var c_out = try out_dir.createFile(file_source_name, .{});
 
-        for (dependencie.out.source.items) |node| {
+        for (dependencie.out.?.source.items) |node| {
             if (node.writeC(c_out.writer(), 0) catch unreachable) {
                 c_out.writeAll(";") catch unreachable;
             }
@@ -99,7 +122,7 @@ pub fn generate(allocator: std.mem.Allocator, out_dir: std.fs.Dir) !void {
         var h_out = try out_dir.createFile(file_header_name, .{});
         defer h_out.close();
 
-        for (dependencie.out.header.items) |node| {
+        for (dependencie.out.?.header.items) |node| {
             if (node.writeC(h_out.writer(), 0) catch unreachable) {
                 h_out.writeAll(";") catch unreachable;
             }
@@ -113,7 +136,7 @@ pub fn generateAst(allocator: std.mem.Allocator, out_dir: std.fs.Dir) !void {
         var path = try std.mem.concat(allocator, u8, &[_][]const u8 {dependency.name, "_ast.xml"});
 
         var file = try out_dir.createFile(path, .{});
-        for (dependency.ast.items) |node| {
+        for (dependency.ast.?.items) |node| {
             try node.writeXML(file.writer(), 0);
         }
 
@@ -121,7 +144,7 @@ pub fn generateAst(allocator: std.mem.Allocator, out_dir: std.fs.Dir) !void {
         path = try std.mem.concat(allocator, u8, &[_][]const u8 {dependency.name, "_infos.xml"});
 
         file = try out_dir.createFile(path, .{});
-        for (dependency.node_infos.items) |info| {
+        for (dependency.node_infos.?.items) |info| {
             try info.writeXML(file.writer());
         }
 
@@ -129,7 +152,7 @@ pub fn generateAst(allocator: std.mem.Allocator, out_dir: std.fs.Dir) !void {
         path = try std.mem.concat(allocator, u8, &[_][]const u8 {dependency.name, "_symbols.xml"});
 
         file = try out_dir.createFile(path, .{});
-        for (dependency.symbols.items) |sym| {
+        for (dependency.symbols.?.items) |sym| {
             try sym.writeXML(file.writer(), 0);
         }
     }

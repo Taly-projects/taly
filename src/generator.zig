@@ -365,7 +365,7 @@ pub const Generator = struct {
         
         // Check if possible
         if (!self.scope.acceptsStatement()) {
-            info.position.errorMessage("Unexpected Value Node!", .{}, self.src, self.file_name);
+            info.position.errorMessage("Unexpected Value Node!", .{});
         }
 
         
@@ -385,7 +385,7 @@ pub const Generator = struct {
 
         // Check if possible
         if (!self.scope.acceptsFunctionDefinition()) {
-            info.position.errorMessage("Unexpected Function Definition!", .{}, self.src, self.file_name);
+            info.position.errorMessage("Unexpected Function Definition!", .{});
         }
 
         // Clone node to be able to modify it while keeping the previous values
@@ -506,7 +506,7 @@ pub const Generator = struct {
         // Find function symbol
         const function_symbol = self.scope.getFunction(&self.symbols, node.data.FunctionCall.name) orelse {
             const info = self.getInfo(node.id).?;
-            info.position.errorMessage("Function `{s}` not declared!", .{node.data.FunctionCall.name}, self.src, self.file_name);
+            info.position.errorMessage("Function `{s}` not declared!", .{node.data.FunctionCall.name});
         };
 
         // Check if parameters match (type + number)
@@ -515,14 +515,14 @@ pub const Generator = struct {
         
         if (!function_symbol.data.Function.variadic and specified_param_count > defined_param_count) {
             const info = self.getInfo(node.id).?;
-            info.position.errorMessageReturn("Not many parameters specified for function `{s}` !", .{node.data.FunctionCall.name}, self.src, self.file_name);
+            info.position.errorMessageReturn("Not many parameters specified for function `{s}` !", .{node.data.FunctionCall.name});
             const symbol_info = self.getInfo(function_symbol.node_id).?;
-            symbol_info.position.errorMessage("Defined here:", .{}, self.src, self.file_name);
+            symbol_info.position.errorMessage("Defined here:", .{});
         } else if (specified_param_count < defined_param_count) {
             const info = self.getInfo(node.id).?;
-            info.position.errorMessageReturn("Not enough parameters specified for function `{s}` !", .{node.data.FunctionCall.name}, self.src, self.file_name);
+            info.position.errorMessageReturn("Not enough parameters specified for function `{s}` !", .{node.data.FunctionCall.name});
             const symbol_info = self.getInfo(function_symbol.node_id).?;
-            symbol_info.position.errorMessage("Defined here:", .{}, self.src, self.file_name);
+            symbol_info.position.errorMessage("Defined here:", .{});
         }
 
         var parameters = parser.NodeList.init(self.allocator);
@@ -562,8 +562,8 @@ pub const Generator = struct {
     fn generateUse(self: *Generator, node: parser.Node) parser.Node {
         if (!std.mem.startsWith(u8, node.data.Use.path, "std-") and !std.mem.startsWith(u8, node.data.Use.path, "c-")) {
             const data = taly.CompilerData.compile(self.allocator, std.mem.concat(self.allocator, u8, &[_][]const u8 {node.data.Use.path, ".taly"}) catch unreachable) catch unreachable;
-            self.infos.appendSlice(data.node_infos.items) catch unreachable;
-            self.symbols.appendSlice(data.symbols.items) catch unreachable;
+            self.infos.appendSlice(data.node_infos.?.items) catch unreachable;
+            self.symbols.appendSlice(data.symbols.?.items) catch unreachable;
         }
 
         return node;
@@ -598,7 +598,6 @@ pub const Generator = struct {
 
             const value_info = self.getInfo(gen_value.id).?;
             if (value_info.data_type) |data_type| {
-                std.log.info("{s} {s}", .{data_type, node.data.VariableDefinition.data_type});
                 if (!std.mem.eql(u8, data_type, node.data.VariableDefinition.data_type)) {
                     var found = false;
                     if (self.getAlias(data_type)) |alias| {
@@ -653,8 +652,6 @@ pub const Generator = struct {
         } else if (self.scope.getClass(&self.symbols, var_name)) |class| {
             sym = class;
         } else {
-            std.log.info("Not found: {s} in:", .{node.data.VariableCall.name});
-            self.scope.scope.?.writeXML(std.io.getStdOut().writer(), 0) catch unreachable;
             @panic("todo");
         }
 
@@ -899,6 +896,12 @@ pub const Generator = struct {
         const class_sym = self.getClass(node.data.ExtendStatement.name) orelse {
             @panic("todo");
         };
+
+        if (class_sym.data.Class.sealed) {
+            info.position.errorMessageReturnOneLine("Cannot extend sealed class!", .{});
+            const class_info = self.getInfo(class_sym.node_id).?;
+            class_info.position.errorMessageOneLine("Defined here:", .{});
+        }
 
         // Move symbols
         class_sym.data.Class.children.appendSlice(info.aside_symbols.?.items) catch unreachable;

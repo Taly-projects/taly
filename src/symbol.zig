@@ -141,6 +141,7 @@ pub const FunctionSymbol = struct {
 };
 
 pub const ClassSymbol = struct {
+    sealed: bool,
     name: []const u8,
     children: SymbolList,
 
@@ -150,6 +151,12 @@ pub const ClassSymbol = struct {
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
         try std.fmt.format(writer, "<class id=\"{d}\" node-id=\"{d}\">\n", .{id, node_id});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<sealed>{}</sealed>\n", .{self.sealed});
 
         // Add tabs
         i = 0;

@@ -25,7 +25,8 @@ pub const TokenKeyword = enum(u8) {
         "class",
         "new",
         "type",
-        "extend"
+        "extend",
+        "sealed",
     };
 
     Fn = 0,
@@ -51,6 +52,7 @@ pub const TokenKeyword = enum(u8) {
     New,
     Type,
     Extend,
+    Sealed,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         var i: usize = 0;
@@ -266,7 +268,9 @@ pub const Lexer = struct {
         return . {
             .file_name = file_name,
             .src = src,
-            .pos = .{}
+            .pos = .{
+                .file_name = file_name
+            }
         };
     }
 
@@ -529,7 +533,7 @@ pub const Lexer = struct {
                             tokens.append(PositionedToken.init(Token { .Symbol = .ExclamationMarkEqual }, start_pos, end_pos)) catch unreachable;
                         } else {
                             const positioned = self.makeSingle(Token { .Format = .NewLine });
-                            positioned.errorMessage("Unexpected char '{c}':", .{current}, self.src, self.file_name);
+                            positioned.errorMessage("Unexpected char '{c}':", .{current});
                         }
                     },
                     ':' => tokens.append(self.makeSingle(Token { .Symbol = .Colon })) catch unreachable,
@@ -567,7 +571,7 @@ pub const Lexer = struct {
                     0 => break,
                     else => {
                         const positioned = self.makeSingle(Token { .Format = .NewLine });
-                        positioned.errorMessage("Unexpected char '{c}':", .{current}, self.src, self.file_name);
+                        positioned.errorMessage("Unexpected char '{c}':", .{current});
                     }
                 }
                 self.advance();

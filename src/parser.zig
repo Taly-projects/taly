@@ -727,6 +727,7 @@ pub const MatchStatement = struct {
 };
 
 pub const ClassNode = struct {
+    sealed: bool,
     name: []const u8,
     body: NodeList,
 
@@ -736,6 +737,12 @@ pub const ClassNode = struct {
         while (i < tabs) : (i += 1) try writer.writeAll("\t");
 
         try std.fmt.format(writer, "<class id=\"{d}\">\n", .{id});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<sealed>{}</sealed>", .{self.sealed});
 
         // Add tabs
         i = 0;
@@ -1080,7 +1087,7 @@ pub const Parser = struct {
             switch (token.data) {
                 .Identifier => |id| return id,
                 else => {
-                    token.errorMessage("Unexpected token '{full}', should be 'Identifier'!", .{token.data}, self.src, self.file_name);
+                    token.errorMessage("Unexpected token '{full}', should be 'Identifier'!", .{token.data});
                 }
             }
         } else {
@@ -1091,7 +1098,7 @@ pub const Parser = struct {
     fn expectExactKeyword(self: *const Parser, keyword: lexer.TokenKeyword) void {
         if (self.getCurrent()) |token| {
             if (!token.data.isKeyword(keyword)) {
-                token.errorMessage("Unexpected token '{full}', should be '{}'!", .{token.data, keyword}, self.src, self.file_name);
+                token.errorMessage("Unexpected token '{full}', should be '{}'!", .{token.data, keyword});
             }
         } else {
             position.errorMessage("Unexpected EOF, should be '{}'!", .{keyword}, self.file_name);
@@ -1101,7 +1108,7 @@ pub const Parser = struct {
     fn expectSymbol(self: *const Parser, sym: lexer.TokenSymbol) void {
         if (self.getCurrent()) |token| {
             if (!token.data.isSymbol(sym)) {
-                token.errorMessage("Unexpected token '{full}', should be '{}'!", .{token.data, symbol}, self.src, self.file_name);
+                token.errorMessage("Unexpected token '{full}', should be '{}'!", .{token.data, symbol});
             }
         } else {
             position.errorMessage("Unexpected EOF, should be '{}'!", .{symbol}, self.file_name);
@@ -1115,12 +1122,12 @@ pub const Parser = struct {
                     switch (constant) {
                         .String => |str| return str,
                         else => {
-                            token.errorMessage("Unexpected token '{full}', should be 'String'!", .{token.data}, self.src, self.file_name);
+                            token.errorMessage("Unexpected token '{full}', should be 'String'!", .{token.data});
                         }
                     }
                 },
                 else => {
-                    token.errorMessage("Unexpected token '{full}', should be 'String'!", .{token.data}, self.src, self.file_name);
+                    token.errorMessage("Unexpected token '{full}', should be 'String'!", .{token.data});
                 }
             }
         } else {
@@ -1131,7 +1138,7 @@ pub const Parser = struct {
     fn expectEOS(self: *const Parser) void {
         if (self.getCurrent()) |current| {
             if (!current.data.isFormat(lexer.TokenFormat.NewLine)) {
-                current.errorMessage("Unexpected token '{full}', should be 'NewLine'!", .{current.data}, self.src, self.file_name);
+                current.errorMessage("Unexpected token '{full}', should be 'NewLine'!", .{current.data});
             } 
         } 
     }
@@ -1310,7 +1317,7 @@ pub const Parser = struct {
 
                     return node;
                 } else {
-                    current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data}, self.src, self.file_name);
+                    current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data});
                 }
             },
             .Symbol => |sym| {
@@ -1372,11 +1379,11 @@ pub const Parser = struct {
 
                     return node;
                 } else {
-                    current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data}, self.src, self.file_name);
+                    current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data});
                 }
             },
             else => {
-                current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data}, self.src, self.file_name);
+                current.errorMessage("Unexpected token '{full}', should be 'Expression'!", .{current.data});
             }
         }
     }
@@ -1929,7 +1936,7 @@ pub const Parser = struct {
                 break;
             } else if (current.data.isKeyword(lexer.TokenKeyword.Elif)) {
                 if (state == IfState.Else) {
-                    current.errorMessage("Unexpected elif branch after an else branch!", .{}, self.src, self.file_name);
+                    current.errorMessage("Unexpected elif branch after an else branch!", .{});
                 }
 
                 self.advance();
@@ -2202,7 +2209,7 @@ pub const Parser = struct {
                 }) catch unreachable;
             } else {
                 std.log.info("tabs: {} / {}", .{tabs, self.tabs});
-                current.errorMessage("Unexpected token '{full}', should be 'Tab' or 'end'", .{current.data}, self.src, self.file_name);
+                current.errorMessage("Unexpected token '{full}', should be 'Tab' or 'end'", .{current.data});
             }
         }
         self.tabs -= 1;
@@ -2239,8 +2246,7 @@ pub const Parser = struct {
         return node;
     }
 
-    fn parseClass(self:* Parser) Node {
-        const start = self.getCurrent().?.start;
+    fn parseClass(self:* Parser, start: position.Position, sealed: bool) Node {
         self.advance();
         const name = self.expectIdentifier();
         var end = self.getCurrent().?.end;
@@ -2250,6 +2256,7 @@ pub const Parser = struct {
         const sym_count = self.symbols.items.len;
         const sym = symbol.Symbol.gen(symbol.SymbolData {
             .Class = symbol.ClassSymbol {
+                .sealed = sealed,
                 .name = name,
                 .children = symbol.SymbolList.init(self.allocator),
             }
@@ -2284,6 +2291,7 @@ pub const Parser = struct {
 
         const node = Node.gen(NodeData {
             .Class = ClassNode {
+                .sealed = sealed,
                 .name = name,
                 .body = body
             }
@@ -2307,7 +2315,6 @@ pub const Parser = struct {
             .position = position.Positioned(void).init(void {}, start, end),
             .symbol_def = sym.id
         }) catch unreachable;
-        
 
         return node;
     }
@@ -2431,13 +2438,18 @@ pub const Parser = struct {
             .Continue => return self.parseContinue(),
             .Break => return self.parseBreak(),
             .Match => return self.parseMatch(),
-            .Class => return self.parseClass(),
+            .Class => return self.parseClass(start, false),
             .New => return self.parseFunctionDefinition(false, true, start),
             .Type => return self.parseTypeAlias(),
             .Extend => return self.parseExtend(),
+            .Sealed => {
+                self.advance();
+                self.expectExactKeyword(lexer.TokenKeyword.Class);
+                return self.parseClass(start, true);
+            },
             else => {
                 const current = self.getCurrent().?;
-                current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);
+                current.errorMessage("Unexpected token '{full}'!", .{current.data});
             }
         }
     }
@@ -2478,7 +2490,7 @@ pub const Parser = struct {
                 switch (sym) {
                     .LeftParenthesis, .Plus, .Dash => return self.parseExpr(),
                     else => {
-                        current.errorMessage("Unexpected token '{full}'!", .{current.data}, self.src, self.file_name);
+                        current.errorMessage("Unexpected token '{full}'!", .{current.data});
                     }
                 }
             },

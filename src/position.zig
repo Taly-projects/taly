@@ -1,8 +1,10 @@
 const std = @import("std");
+const taly = @import("taly.zig");
 
 var SHOULD_PANIC: bool = true;
 
 pub const Position = struct {
+    file_name: []const u8,
     index: usize = 0,
     column: usize = 0,
     column_index: usize = 0,
@@ -46,7 +48,9 @@ pub fn Positioned(comptime T: type) type {
             };
         }
 
-        pub fn printMessage(self: *const Self, writer: anytype, src: []const u8) !void {
+        pub fn printMessage(self: *const Self, writer: anytype) !void {
+            const src = taly.CompilerData.get(self.start.file_name).?.src;
+
             var lines = std.mem.split(u8, src, "\n");
 
             // Go to the start line
@@ -75,29 +79,81 @@ pub fn Positioned(comptime T: type) type {
                 while (j < length) : (j += 1) try writer.writeAll("^");
                 try writer.writeAll("\n");
             }
+        }
+
+        pub fn printMessageOneLine(self: *const Self, writer: anytype) !void {
+            const src = taly.CompilerData.get(self.start.file_name).?.src;
+
+            var lines = std.mem.split(u8, src, "\n");
+
+            // Go to the start line
+            var i: usize = 0;
+            while (i < self.start.line) : (i += 1) {
+                _ = lines.next();
+            }
+
+            const line = lines.next() orelse return;
+
+            // Compute offset and error length
+            const offset = self.start.column;
+            const length = if (self.start.line == self.end.line) self.end.column else line.len;
+
+            // Write line
+            try std.fmt.format(writer, "\x1b[38;2;81;81;255m{d: >6} | \x1b[0m", .{self.start.line + 1});
+            try std.fmt.format(writer, "{s}\n", .{line});
+
+            // Write offset
+            try writer.writeAll("         ");
+            var j: usize = 0;
+            while (j < offset) : (j += 1) try writer.writeAll(" ");
+            while (j < length) : (j += 1) try writer.writeAll("^");
+            try writer.writeAll("\n");
         }  
 
-        pub fn errorMessage(self: *const Self, comptime msg: []const u8, args: anytype, src: []const u8, file_name: []const u8) noreturn {
+        pub fn errorMessage(self: *const Self, comptime msg: []const u8, args: anytype) noreturn {
             const stdout = std.io.getStdOut();
             
-            std.fmt.format(stdout.writer(), "\x1b[1m\x1b[38;2;255;81;81m{s}:{}:\x1b[0m ", .{file_name, self.start}) catch unreachable;
+            std.fmt.format(stdout.writer(), "\x1b[1m\x1b[38;2;255;81;81m{s}.taly:{}:\x1b[0m ", .{self.start.file_name, self.start}) catch unreachable;
             std.fmt.format(stdout.writer(), msg, args) catch unreachable;
             stdout.writeAll("\n") catch unreachable;
 
-            self.printMessage(stdout.writer(), src) catch unreachable;
+            self.printMessage(stdout.writer()) catch unreachable;
 
             if (SHOULD_PANIC) @panic("")
             else std.os.exit(0);
         }
 
-        pub fn errorMessageReturn(self: *const Self, comptime msg: []const u8, args: anytype, src: []const u8, file_name: []const u8) void {
+        pub fn errorMessageOneLine(self: *const Self, comptime msg: []const u8, args: anytype) noreturn {
             const stdout = std.io.getStdOut();
             
-            std.fmt.format(stdout.writer(), "\x1b[1m\x1b[38;2;255;81;81m{s}:{}:\x1b[0m ", .{file_name, self.start}) catch unreachable;
+            std.fmt.format(stdout.writer(), "\x1b[1m\x1b[38;2;255;81;81m{s}.taly:{}:\x1b[0m ", .{self.start.file_name, self.start}) catch unreachable;
             std.fmt.format(stdout.writer(), msg, args) catch unreachable;
             stdout.writeAll("\n") catch unreachable;
 
-            self.printMessage(stdout.writer(), src) catch unreachable;
+            self.printMessageOneLine(stdout.writer()) catch unreachable;
+
+            if (SHOULD_PANIC) @panic("")
+            else std.os.exit(0);
+        }
+
+        pub fn errorMessageReturn(self: *const Self, comptime msg: []const u8, args: anytype) void {
+            const stdout = std.io.getStdOut();
+            
+            std.fmt.format(stdout.writer(), "\x1b[1m\x1b[38;2;255;81;81m{s}.taly:{}:\x1b[0m ", .{self.start.file_name, self.start}) catch unreachable;
+            std.fmt.format(stdout.writer(), msg, args) catch unreachable;
+            stdout.writeAll("\n") catch unreachable;
+
+            self.printMessage(stdout.writer()) catch unreachable;
+        }
+
+        pub fn errorMessageReturnOneLine(self: *const Self, comptime msg: []const u8, args: anytype) void {
+            const stdout = std.io.getStdOut();
+            
+            std.fmt.format(stdout.writer(), "\x1b[1m\x1b[38;2;255;81;81m{s}.taly:{}:\x1b[0m ", .{self.start.file_name, self.start}) catch unreachable;
+            std.fmt.format(stdout.writer(), msg, args) catch unreachable;
+            stdout.writeAll("\n") catch unreachable;
+
+            self.printMessageOneLine(stdout.writer()) catch unreachable;
         }
     };
 }

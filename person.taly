@@ -2,7 +2,7 @@ use "std-stdio"
 
 extern fn printf(msg: c_string, ...)
 
-class Person
+sealed class Person
     var name: c_string
     var age: c_int
 
