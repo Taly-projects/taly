@@ -1,11 +1,14 @@
 use "test"
 use "person"
 
+intf IAnimal
+    fn sayHello()
+
 extend Person
     fn getName(): c_string => return (self.name)
 
 # main function
 fn main() =>
-    var person: Person2 = Person2.create("John", 12)
+    var person: Person2 = Person2.create("Tautvydas", 12)
     person.sayHello()
     sayHello(person.getName())

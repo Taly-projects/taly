@@ -27,6 +27,7 @@ pub const TokenKeyword = enum(u8) {
         "type",
         "extend",
         "sealed",
+        "intf",
     };
 
     Fn = 0,
@@ -53,6 +54,7 @@ pub const TokenKeyword = enum(u8) {
     Type,
     Extend,
     Sealed,
+    Intf,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         var i: usize = 0;

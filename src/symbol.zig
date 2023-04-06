@@ -259,12 +259,57 @@ pub const TypeAliasSymbol = struct {
     }
 };
 
+pub const InterfaceSymbol = struct {
+    name: []const u8,
+    children: SymbolList,
+
+    pub fn writeXML(self: *const InterfaceSymbol, writer: anytype, tabs: usize, id: usize, node_id: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<interface id=\"{d}\" node-id=\"{d}\">\n", .{id, node_id});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<children>");
+        if (self.children.items.len != 0) try writer.writeAll("\n");
+
+        for (self.children.items) |child| {
+            
+            try child.writeXML(writer, tabs + 2);
+        }
+
+        if (self.children.items.len != 0) {
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        }
+        try writer.writeAll("</children>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</interface>\n");
+    }
+};
+
 pub const SymbolTag = enum {
     Variable,
     Function,
     Class,
     Block,
     TypeAlias,
+    Interface,
 };
 
 pub const SymbolData = union(SymbolTag) {
@@ -273,6 +318,7 @@ pub const SymbolData = union(SymbolTag) {
     Class: ClassSymbol,
     Block: BlockSymbol,
     TypeAlias: TypeAliasSymbol,
+    Interface: InterfaceSymbol,
 };
 
 pub const Symbol = struct {
@@ -313,6 +359,11 @@ pub const Symbol = struct {
                     if (child.getSymbol(id)) |sym| return sym;
                 } 
             },
+            .Interface => |*intf| {
+                for (intf.children.items) |*child| {
+                    if (child.getSymbol(id)) |sym| return sym;
+                } 
+            },
             else => {}
         }
 
@@ -322,6 +373,14 @@ pub const Symbol = struct {
     pub fn getClass(self: *Symbol, name: []const u8) ?*Symbol {
         if (self.data == SymbolTag.Class) {
             if (std.mem.eql(u8, self.data.Class.name, name)) return self;
+        }
+
+        return null;
+    }
+
+    pub fn getInterface(self: *Symbol, name: []const u8) ?*Symbol {
+        if (self.data == SymbolTag.Interface) {
+            if (std.mem.eql(u8, self.data.Interface.name, name)) return self;
         }
 
         return null;
@@ -342,6 +401,7 @@ pub const Symbol = struct {
             .Class => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
             .Block => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
             .TypeAlias => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
+            .Interface => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
         }
     }
 };

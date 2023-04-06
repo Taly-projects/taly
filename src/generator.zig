@@ -283,6 +283,20 @@ pub const Scope = struct {
         }
         return null;
     }
+
+    pub fn getParentInterface(self: *const Scope) ?*parser.Symbol {
+        if (self.parent) |parent| {
+            if (parent.scope) |scope| {
+                switch (scope.data) {
+                    .Interface => return scope,
+                    else => {}
+                }
+            }
+
+            return parent.getParentInterface();
+        }
+        return null;
+    }
 };
 
 
@@ -445,6 +459,18 @@ pub const Generator = struct {
                 parameters.append(parser.FunctionDefinitionParameter {
                     .name = "self",
                     .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable
+                }) catch unreachable;
+            }
+        } else if (self.scope.getParentInterface()) |intf| {
+            info.renamed = std.mem.concat(self.allocator, u8, &[_][]const u8 {intf.data.Interface.name, "_", node.data.FunctionDefinition.name}) catch unreachable;
+
+            if (node.data.FunctionDefinition.constructor) {
+                @panic("todo (no constructor in interfaces)");
+            } else {
+                // Add self parameter
+                parameters.append(parser.FunctionDefinitionParameter {
+                    .name = "super",
+                    .data_type = "void*"
                 }) catch unreachable;
             }
         }
@@ -927,6 +953,38 @@ pub const Generator = struct {
         return new_node;
     }
 
+    fn generateInterface(self: *Generator, node: parser.Node) parser.Node {
+        // Check scope (possible here)
+        if (!self.scope.acceptsClassDefinition()) {
+            @panic("todo");
+        }
+
+        // Clone node to be able to modify it while keeping the previous values
+        var new_node = node;
+
+        // Enter scope
+        const infos = self.getInfo(node.id).?;
+        const sym = self.getSymbol(infos.symbol_def.?).?;
+        const scope = Scope {
+            .parent = self.allocator.create(Scope) catch unreachable,
+            .scope = sym
+        };
+        scope.parent.?.* = self.scope;
+        self.scope = scope;
+
+        // Check body
+        var body = parser.NodeList.init(self.allocator);
+        for (node.data.Interface.body.items) |child| {
+            body.append(self.generateNode(child)) catch unreachable;
+        }
+        new_node.data.Interface.body = body;
+        
+        // Exit scope
+        self.scope = self.scope.parent.?.*;
+        
+        return new_node;
+    }
+
     fn generateNode(self: *Generator, node: parser.Node) parser.Node {
         switch (node.data) {
             .Value => return self.generateValue(node),
@@ -946,6 +1004,7 @@ pub const Generator = struct {
             .Match => return self.generateMatch(node),
             .Class => return self.generateClass(node),
             .ExtendStatement => return self.generateExtend(node),
+            .Interface => return self.generateInterface(node),
             else => return node
         }
     }
