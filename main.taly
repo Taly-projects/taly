@@ -1,8 +1,13 @@
 use "test"
 use "person"
 
+# TODO: Auto return for functions (like the makeNoise one)
+
 intf IAnimal
-    fn sayHello()
+    fn makeNoise(): c_string
+
+class Dog: IAnimal
+    fn makeNoise(): c_string => "Woof"
 
 extend Person
     fn getName(): c_string => return (self.name)

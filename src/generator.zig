@@ -361,6 +361,14 @@ pub const Generator = struct {
         return null;
     }
 
+    fn getInterface(self: *const Generator, name: []const u8) ?*parser.Symbol {
+        for (self.symbols.items) |*sym| {
+            if (sym.getInterface(name)) |sym2| return sym2;
+        }
+
+        return null;
+    }
+
     fn addSymbol(self: *Generator, symbol: parser.Symbol) void {
         if (self.scope.scope) |scope| {
             switch (scope.data) {
@@ -455,11 +463,63 @@ pub const Generator = struct {
 
                 is_constructor = true;
             } else {
-                // Add self parameter
-                parameters.append(parser.FunctionDefinitionParameter {
-                    .name = "self",
-                    .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable
-                }) catch unreachable;
+                // Check if it's part of the extensions
+                var extension_sym: ?*parser.Symbol = null;
+                var extension_fun: ?*parser.Symbol = null;
+                A: for (class.data.Class.extensions.items) |extension_name| {
+                    const extension = self.getInterface(extension_name).?;
+                    for (extension.data.Interface.children.items) |*child| {
+                        if (std.mem.eql(u8, child.data.Function.name, sym.data.Function.name)) {
+                            extension_sym = extension;
+                            extension_fun = child;
+                            break :A;
+                        }
+                    }
+                }
+
+                if (extension_sym != null) {
+                    // TODO: Check if parameters match
+                    // TODO: Check if return type match
+
+                    // Add self
+                    parameters.append(parser.FunctionDefinitionParameter {
+                        .name = "self_void",
+                        .data_type = "void*",
+                    }) catch unreachable;
+                    
+                    // Convert self
+                    var value = self.allocator.create(parser.Node) catch unreachable;
+                    value.* = parser.Node.gen(parser.NodeData {
+                        .CI_PureC = parser.CI_PureCNode {
+                            .code = std.mem.concat(self.allocator, u8, &[_][]const u8 { "(", class.data.Class.name, "*) self_void"}) catch unreachable,
+                        }
+                    });
+                    body.append(parser.Node.gen(parser.NodeData {
+                        .VariableDefinition = parser.VariableDefinitionNode {
+                            .constant = false,
+                            .name = "self",
+                            .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8 { class.data.Class.name, "*" }) catch unreachable,
+                            .value = value,
+                        }
+                    })) catch unreachable;
+
+                    // Generate symbol
+                    self.addSymbol(parser.Symbol.gen(parser.SymbolData {
+                        .Variable = parser.VariableSymbol {
+                            .name = "self",
+                            .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable,
+                            .initialized = true,
+                            .constant = true,
+                        }
+                    }, parser.Node.NO_ID));
+                } else {
+                    // Add self parameter
+                    parameters.append(parser.FunctionDefinitionParameter {
+                        .name = "self",
+                        .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable
+                    }) catch unreachable;
+                }             
+
             }
         } else if (self.scope.getParentInterface()) |intf| {
             info.renamed = std.mem.concat(self.allocator, u8, &[_][]const u8 {intf.data.Interface.name, "_", node.data.FunctionDefinition.name}) catch unreachable;

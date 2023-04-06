@@ -729,6 +729,7 @@ pub const MatchStatement = struct {
 pub const ClassNode = struct {
     sealed: bool,
     name: []const u8,
+    extensions: std.ArrayList([]const u8),
     body: NodeList,
 
     pub fn writeXML(self: *const ClassNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
@@ -2299,11 +2300,32 @@ pub const Parser = struct {
         var end = self.getCurrent().?.end;
         self.advance();
 
+        var extensions = std.ArrayList([]const u8).init(self.allocator);
+        if (self.getCurrent() != null) {
+            var current = self.getCurrent().?;
+            if (current.data.isSymbol(lexer.TokenSymbol.Colon)) {
+                self.advance();
+                while (true) {
+                    if (self.getCurrent() == null) {
+                        if (extensions.items.len == 0) @panic("todo");
+                        break;
+                    }
+                    current = self.getCurrent().?;
+                    if (extensions.items.len != 0) {
+                        if (!current.data.isSymbol(lexer.TokenSymbol.Comma)) break;
+                        self.advance();
+                    }
+                    extensions.append(self.expectIdentifier()) catch unreachable;
+                    self.advance();
+                }
+            }
+        }
         // Generate symbol
         const sym_count = self.symbols.items.len;
         const sym = symbol.Symbol.gen(symbol.SymbolData {
             .Class = symbol.ClassSymbol {
                 .sealed = sealed,
+                .extensions = extensions,
                 .name = name,
                 .children = symbol.SymbolList.init(self.allocator),
             }
@@ -2339,6 +2361,7 @@ pub const Parser = struct {
         const node = Node.gen(NodeData {
             .Class = ClassNode {
                 .sealed = sealed,
+                .extensions = extensions,
                 .name = name,
                 .body = body
             }
