@@ -718,12 +718,12 @@ pub const Generator = struct {
     }
 
     fn generateVariableCall(self: *Generator, node: parser.Node) parser.Node {
+        const info = self.getInfo(node.id).?;
+        
         // Check scope (possible here)
         if (!self.scope.acceptsStatement()) {
-            @panic("todo");
+            info.position.errorMessage("Variable call is not possible here!", .{});    
         }
-
-        const info = self.getInfo(node.id).?;
 
         // Check if exists
         var sym: *parser.Symbol = undefined;
@@ -973,6 +973,8 @@ pub const Generator = struct {
         if (!self.scope.acceptsClassDefinition()) {
             @panic("todo");
         }
+
+        // TODO: Check if all functions are present (and only the defined one, no extra)
 
         var new_node = node;
 

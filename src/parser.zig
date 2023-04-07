@@ -811,6 +811,7 @@ pub const TypeNode = struct {
 
 pub const ExtendStatementNode = struct {
     name: []const u8,
+    with: ?[]const u8,
     body: NodeList,
 
     pub fn writeXML(self: *const ExtendStatementNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
@@ -825,6 +826,14 @@ pub const ExtendStatementNode = struct {
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
 
         try std.fmt.format(writer, "<name>{s}</name>", .{self.name});
+        
+        if (self.with) |with| {
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try std.fmt.format(writer, "<with>{s}</with>", .{with});
+        }
 
         if (self.body.items.len != 0) {
             // Add tabs
@@ -2396,6 +2405,16 @@ pub const Parser = struct {
         var end = self.getCurrent().?.end;
         self.advance();
 
+        var with: ?[]const u8 = null;
+        if (self.getCurrent() != null) {
+            var current = self.getCurrent().?;
+            if (current.data.isKeyword(lexer.TokenKeyword.With)) {
+                self.advance();
+                with = self.expectIdentifier();
+                self.advance();
+            }
+        }
+
         // Generate symbol
         const sym_count = self.symbols.items.len;
 
@@ -2428,6 +2447,7 @@ pub const Parser = struct {
         const node = Node.gen(NodeData {
             .ExtendStatement = ExtendStatementNode {
                 .name = name,
+                .with = with,
                 .body = body
             }
         });
