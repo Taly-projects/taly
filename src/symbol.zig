@@ -304,6 +304,50 @@ pub const InterfaceSymbol = struct {
     }
 };
 
+pub const PrototypeSymbol = struct {
+    name: []const u8,
+    children: SymbolList,
+
+    pub fn writeXML(self: *const PrototypeSymbol, writer: anytype, tabs: usize, id: usize, node_id: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<prototype id=\"{d}\" node-id=\"{d}\">\n", .{id, node_id});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("<children>");
+        if (self.children.items.len != 0) try writer.writeAll("\n");
+
+        for (self.children.items) |child| {
+            
+            try child.writeXML(writer, tabs + 2);
+        }
+
+        if (self.children.items.len != 0) {
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        }
+        try writer.writeAll("</children>\n");
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</prototype>\n");
+    }
+};
+
 pub const SymbolTag = enum {
     Variable,
     Function,
@@ -311,6 +355,7 @@ pub const SymbolTag = enum {
     Block,
     TypeAlias,
     Interface,
+    Prototype,
 };
 
 pub const SymbolData = union(SymbolTag) {
@@ -320,6 +365,7 @@ pub const SymbolData = union(SymbolTag) {
     Block: BlockSymbol,
     TypeAlias: TypeAliasSymbol,
     Interface: InterfaceSymbol,
+    Prototype: PrototypeSymbol,
 };
 
 pub const Symbol = struct {
@@ -365,6 +411,11 @@ pub const Symbol = struct {
                     if (child.getSymbol(id)) |sym| return sym;
                 } 
             },
+            .Prototype => |*proto| {
+                for (proto.children.items) |*child| {
+                    if (child.getSymbol(id)) |sym| return sym;
+                } 
+            },
             else => {}
         }
 
@@ -403,6 +454,7 @@ pub const Symbol = struct {
             .Block => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
             .TypeAlias => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
             .Interface => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
+            .Prototype => |node| return node.writeXML(writer, tabs, self.id, self.node_id),
         }
     }
 };

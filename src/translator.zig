@@ -1347,12 +1347,7 @@ pub const Translator = struct {
         }) catch unreachable;
         
         for (intf.body.items) |child| {
-            if (child.data == parser.NodeTag.VariableDefinition) {
-                fields.append(StructField {
-                    .name = child.data.VariableDefinition.name,
-                    .data_type = self.translateType(child.data.VariableDefinition.data_type),
-                }) catch unreachable;
-            } else if (child.data == parser.NodeTag.FunctionDefinition) {
+            if (child.data == parser.NodeTag.FunctionDefinition) {
                 var buf = std.ArrayList(u8).init(self.allocator);
                 std.fmt.format(buf.writer(), "{s} (*{s}_fn)(", .{
                     self.translateType(child.data.FunctionDefinition.return_type orelse "void"), 
@@ -1426,6 +1421,99 @@ pub const Translator = struct {
         return nodes;
     }
 
+    fn translatePrototype(self: *Translator, node: parser.Node) NodeList {
+        var nodes = NodeList.init(self.allocator);
+
+        const proto = node.data.Prototype;
+
+        var fields = StructFields.init(self.allocator);
+        var methods = parser.NodeList.init(self.allocator);
+
+        fields.append(StructField {
+            .name = "super",
+            .data_type = "void*"
+        }) catch unreachable;
+        
+        for (proto.body.items) |child| {
+            if (child.data == parser.NodeTag.VariableDefinition) {
+                fields.append(StructField {
+                    .name = child.data.VariableDefinition.name,
+                    .data_type = self.translateType(child.data.VariableDefinition.data_type),
+                }) catch unreachable;
+            } else if (child.data == parser.NodeTag.FunctionDefinition) {
+                var buf = std.ArrayList(u8).init(self.allocator);
+                std.fmt.format(buf.writer(), "{s} (*{s}_fn)(", .{
+                    self.translateType(child.data.FunctionDefinition.return_type orelse "void"), 
+                    child.data.FunctionDefinition.name
+                }) catch unreachable;
+
+                var i: usize = 0;
+                for (child.data.FunctionDefinition.parameters.items) |param| {
+                    if (i != 0) buf.writer().writeAll(", ") catch unreachable;
+                    std.fmt.format(buf.writer(), "{s}", .{
+                        self.translateType(param.data_type)
+                    }) catch unreachable; 
+                    i += 1;
+                }
+
+                buf.append(')') catch unreachable;
+                
+                fields.append(StructField {
+                    .name = "", // Since defined in type
+                    .data_type = buf.items
+                }) catch unreachable;
+
+                var new_function: parser.Node = child;
+                new_function.data.FunctionDefinition.parameters.items[0].name = "self";
+                new_function.data.FunctionDefinition.parameters.items[0].data_type = std.mem.concat(self.allocator, u8, &[_][]const u8 { proto.name, "*" }) catch unreachable;
+                
+                buf = std.ArrayList(u8).init(self.allocator);
+                std.fmt.format(buf.writer(), "return self->{s}_fn(self->super", .{child.data.FunctionDefinition.name}) catch unreachable;
+
+                i = 0;
+                for (child.data.FunctionDefinition.parameters.items) |param| {
+                    if (i == 0) {
+                        // Skip the first one (super)
+                        i += 1;
+                        continue;
+                    }
+                    buf.writer().writeAll(", ") catch unreachable;
+                    std.fmt.format(buf.writer(), "{s}", .{
+                        param.name
+                    }) catch unreachable; 
+                    i += 1;
+                }
+                buf.writer().writeAll(");") catch unreachable;
+
+                new_function.data.FunctionDefinition.body.append(
+                    parser.Node.gen(parser.NodeData {
+                        .CI_PureC = parser.CI_PureCNode {
+                            .code = buf.items
+                        }
+                    })
+                ) catch unreachable;
+
+                methods.append(new_function) catch unreachable;
+                
+            } else {
+                @panic("Unexpected node in interface!");
+            }
+        }
+
+        self.header.append(Node {
+            .Struct = StructNode {
+                .name = proto.name,
+                .fields = fields
+            }
+        }) catch unreachable;
+
+        for (methods.items) |method| {
+            nodes.appendSlice(self.translateNode(method).items) catch unreachable;
+        }
+
+        return nodes;
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
         switch (node.data) {
@@ -1448,6 +1536,7 @@ pub const Translator = struct {
             .Type => self.translateTypeAlias(node),
             .ExtendStatement => nodes.appendSlice(self.translateExtend(node).items) catch unreachable,
             .Interface => nodes.appendSlice(self.translateInterface(node).items) catch unreachable,
+            .Prototype => nodes.appendSlice(self.translatePrototype(node).items) catch unreachable,
             .CI_PureC => nodes.append(self.translateCIPureC(node)) catch unreachable,
         }
         return nodes;

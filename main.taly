@@ -18,6 +18,11 @@ intf IGetName
 extend Person with IGetName
     fn getName(): c_string => return self.name
 
+proto PVehicle
+    var wheels: c_int
+
+    fn honk(): c_string
+
 # main function
 fn main() =>
     var person: Person2 = Person2.create("Tautvydas", 12)

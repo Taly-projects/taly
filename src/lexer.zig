@@ -29,6 +29,7 @@ pub const TokenKeyword = enum(u8) {
         "sealed",
         "intf",
         "with",
+        "proto"
     };
 
     Fn = 0,
@@ -57,6 +58,7 @@ pub const TokenKeyword = enum(u8) {
     Sealed,
     Intf,
     With,
+    Proto,
 
     pub fn isKeyword(data: []const u8) ?TokenKeyword {
         var i: usize = 0;

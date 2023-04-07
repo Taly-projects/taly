@@ -905,6 +905,49 @@ pub const InterfaceNode = struct {
     }
 };
 
+pub const PrototypeNode = struct {
+    name: []const u8,
+    body: NodeList,
+
+    pub fn writeXML(self: *const PrototypeNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<prototype id=\"{d}\">\n", .{id});
+
+        // Add tabs
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<name>{s}</name>", .{self.name});
+
+        if (self.body.items.len != 0) {
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try writer.writeAll("<body>\n");
+
+            for (self.body.items) |node| {
+                try node.writeXML(writer, tabs + 2);
+            }
+
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+
+            try writer.writeAll("</body>\n");
+        }
+
+        // Add tabs
+        i = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</prototype>\n");      
+    }
+};
+
 // Compiler Instruction - Pure C
 pub const CI_PureCNode = struct {
     code: []const u8,
@@ -938,6 +981,7 @@ pub const NodeTag = enum {
     Type,
     ExtendStatement,
     Interface,
+    Prototype,
     CI_PureC,
 };
 
@@ -961,6 +1005,7 @@ pub const NodeData = union(NodeTag) {
     Type: TypeNode,
     ExtendStatement: ExtendStatementNode,
     Interface: InterfaceNode,
+    Prototype: PrototypeNode,
     CI_PureC: CI_PureCNode,
 
     pub fn makeNode(self: NodeData) Node {
@@ -988,6 +1033,7 @@ pub const NodeData = union(NodeTag) {
             .Type => |node| return node.writeXML(writer, tabs, id),
             .ExtendStatement => |node| return node.writeXML(writer, tabs, id),
             .Interface => |node| return node.writeXML(writer, tabs, id),
+            .Prototype => |node| return node.writeXML(writer, tabs, id),
             .CI_PureC => |node| return node.writeXML(writer, tabs, id),
         }
     }
@@ -1018,6 +1064,7 @@ pub const NodeData = union(NodeTag) {
             .Type => |node| node.writeXML(writer, 0) catch unreachable,
             .ExtendStatement => |node| node.writeXML(writer, 0) catch unreachable,
             .Interface => |node| node.writeXML(writer, 0) catch unreachable,
+            .Prototype => |node| node.writeXML(writer, 0) catch unreachable,
             .CI_PureC => |node| node.writeXML(writer, 0) catch unreachable,
         }
     }
@@ -2580,6 +2627,77 @@ pub const Parser = struct {
         return node;
     }
 
+    fn parsePrototype(self:* Parser, start: position.Position) Node {
+        self.advance();
+        const name = self.expectIdentifier();
+        var end = self.getCurrent().?.end;
+        self.advance();
+
+        // Generate symbol
+        const sym_count = self.symbols.items.len;
+        const sym = symbol.Symbol.gen(symbol.SymbolData {
+            .Prototype = symbol.PrototypeSymbol {
+                .name = name,
+                .children = symbol.SymbolList.init(self.allocator),
+            }
+        }, symbol.Symbol.NO_ID);
+        self.symbols.append(sym) catch unreachable;
+
+        self.tabs += 1;
+        var tab_count: usize = 0;
+        var first = true;
+        var body = NodeList.init(self.allocator);
+        var last_index = self.index;
+        while (self.getCurrent() != null) {
+            const current = self.getCurrent().?;
+            if (current.data.isFormat(lexer.TokenFormat.Tab)) {
+                tab_count += 1;
+                self.advance();
+            } else if (current.data.isFormat(lexer.TokenFormat.NewLine)) {
+                tab_count = 0;
+                first = false;
+                self.advance();
+            } else if (first or tab_count >= self.tabs) {
+                const node = self.parseCurrent();
+                body.append(node) catch unreachable;
+                last_index = self.index;
+                end = self.get_infos(node.id).position.end;
+            } else {
+                break;
+            }
+        }
+        self.tabs -= 1;
+        self.index = last_index;
+
+        const node = Node.gen(NodeData {
+            .Prototype = PrototypeNode {
+                .name = name,
+                .body = body
+            }
+        });
+
+        // Update symbol ID
+        const symbol_ref = &self.symbols.items[sym_count];
+        symbol_ref.node_id = node.id;
+
+        // Pop all children
+        var i: usize = self.symbols.items.len;
+        while (i > sym_count + 1) {
+            const child = self.symbols.pop();
+            symbol_ref.data.Prototype.children.append(child) catch unreachable;
+            i -= 1;
+        }
+
+        // Generate node informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end),
+            .symbol_def = sym.id
+        }) catch unreachable;
+
+        return node;
+    }
+
     fn handleKeyword(self: *Parser, keyword: lexer.TokenKeyword) Node {
         const start = self.getCurrent().?.start;
         switch (keyword) {
@@ -2609,6 +2727,7 @@ pub const Parser = struct {
                 return self.parseClass(start, true);
             },
             .Intf => return self.parseInterface(start),
+            .Proto => return self.parsePrototype(start),
             else => {
                 const current = self.getCurrent().?;
                 current.errorMessage("Unexpected token '{full}'!", .{current.data});
