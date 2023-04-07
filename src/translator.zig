@@ -1375,7 +1375,7 @@ pub const Translator = struct {
                 new_function.data.FunctionDefinition.parameters.items[0].data_type = std.mem.concat(self.allocator, u8, &[_][]const u8 { intf.name, "*" }) catch unreachable;
                 
                 buf = std.ArrayList(u8).init(self.allocator);
-                std.fmt.format(buf.writer(), "self->{s}_fn(self->super", .{child.data.FunctionDefinition.name}) catch unreachable;
+                std.fmt.format(buf.writer(), "return self->{s}_fn(self->super", .{child.data.FunctionDefinition.name}) catch unreachable;
 
                 i = 0;
                 for (child.data.FunctionDefinition.parameters.items) |param| {

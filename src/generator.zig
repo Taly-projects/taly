@@ -441,8 +441,10 @@ pub const Generator = struct {
 
         // Check if method
         var is_constructor = false;
+        var is_class = false;
         var parameters = parser.FunctionDefinitionParameters.init(self.allocator);
         if (self.scope.getParentClass()) |class| {
+            is_class = true;
             info.renamed = std.mem.concat(self.allocator, u8, &[_][]const u8 {class.data.Class.name, "_", node.data.FunctionDefinition.name}) catch unreachable;
 
             if (node.data.FunctionDefinition.constructor) {
@@ -593,6 +595,28 @@ pub const Generator = struct {
                     .value = returned_value
                 }
             })) catch unreachable;
+        }
+
+        if (node.data.FunctionDefinition.return_type != null) {
+            if (body.popOrNull()) |last| {
+                // TODO: Check type
+
+                // Check if return
+                var new_last = last;
+                if (last.data != parser.NodeTag.Return) {
+                    var value = self.allocator.create(parser.Node) catch unreachable;
+                    value.* = last;
+                    new_last = parser.Node.gen(parser.NodeData {
+                        .Return = parser.ReturnNode {
+                            .value = value 
+                        }
+                    });
+                }
+
+                body.append(new_last) catch unreachable;
+            } else if(is_class) {
+                @panic("todo (should return something)");
+            }
         }
 
         new_node.data.FunctionDefinition.body = body;
