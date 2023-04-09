@@ -777,6 +777,22 @@ pub const Translator = struct {
         return data_type;
     }
 
+    fn translateTypeNode(self: *Translator, data_type_opt: ?*parser.Node) []const u8 {
+        if (data_type_opt) |data_type| {
+            if (self.getInfo(data_type.id)) |info| {
+                if (info.is_generic) return "void*";
+            }
+
+            switch (data_type.data) {
+                .VariableCall => |var_call| return self.translateType(var_call.name), // TODO: Check if generic
+                .GenericCall => @panic("todo"),
+                else => unreachable
+            }
+        } 
+        return "void";
+
+    }
+
     fn translateValueNode(self: *Translator, node: parser.Node) Node {
         _ = self;
         switch (node.data.Value) {
@@ -814,7 +830,7 @@ pub const Translator = struct {
                 .FunctionHeader = .{
                     .name = name,
                     .parameters = parameters,
-                    .return_type = self.translateType(function_def.return_type orelse "void")
+                    .return_type = self.translateTypeNode(function_def.return_type)
                 }
             }) catch unreachable; 
         }
@@ -830,7 +846,7 @@ pub const Translator = struct {
             .FunctionSource = .{
                 .name = name,
                 .parameters = parameters,
-                .return_type = self.translateType(function_def.return_type orelse "void"),
+                .return_type = self.translateTypeNode(function_def.return_type),
                 .body = body
             }
         }) catch unreachable; 
@@ -1338,6 +1354,9 @@ pub const Translator = struct {
 
         const intf = node.data.Interface;
 
+        // Don't generic if it has generics (at least for now since it cannot be casted to / stored as the common generic type)
+        if (intf.generics.items.len != 0) return nodes;
+
         var fields = StructFields.init(self.allocator);
         var methods = parser.NodeList.init(self.allocator);
 
@@ -1350,7 +1369,7 @@ pub const Translator = struct {
             if (child.data == parser.NodeTag.FunctionDefinition) {
                 var buf = std.ArrayList(u8).init(self.allocator);
                 std.fmt.format(buf.writer(), "{s} (*{s}_fn)(", .{
-                    self.translateType(child.data.FunctionDefinition.return_type orelse "void"), 
+                    self.translateTypeNode(child.data.FunctionDefinition.return_type), 
                     child.data.FunctionDefinition.name
                 }) catch unreachable;
 
@@ -1443,7 +1462,7 @@ pub const Translator = struct {
             } else if (child.data == parser.NodeTag.FunctionDefinition) {
                 var buf = std.ArrayList(u8).init(self.allocator);
                 std.fmt.format(buf.writer(), "{s} (*{s}_fn)(", .{
-                    self.translateType(child.data.FunctionDefinition.return_type orelse "void"), 
+                    self.translateTypeNode(child.data.FunctionDefinition.return_type), 
                     child.data.FunctionDefinition.name
                 }) catch unreachable;
 
@@ -1514,6 +1533,23 @@ pub const Translator = struct {
         return nodes;
     }
 
+    fn translateGenericCall(self: *Translator, node: parser.Node) NodeList {
+        var nodes = NodeList.init(self.allocator);
+
+        const generic_call = node.data.GenericCall;
+
+        // TODO: Handle Generic
+
+        // Create translated node
+        nodes.append(Node {
+            .VariableCall = .{ 
+                .name = generic_call.name
+            }
+        }) catch unreachable;
+
+        return nodes;
+    }
+
     fn translateNode(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
         switch (node.data) {
@@ -1537,6 +1573,7 @@ pub const Translator = struct {
             .ExtendStatement => nodes.appendSlice(self.translateExtend(node).items) catch unreachable,
             .Interface => nodes.appendSlice(self.translateInterface(node).items) catch unreachable,
             .Prototype => nodes.appendSlice(self.translatePrototype(node).items) catch unreachable,
+            .GenericCall => nodes.appendSlice(self.translateGenericCall(node).items) catch unreachable,
             .CI_PureC => nodes.append(self.translateCIPureC(node)) catch unreachable,
         }
         return nodes;

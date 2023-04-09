@@ -91,7 +91,7 @@ pub const FunctionDefinitionNode = struct {
     name: []const u8,
     parameters: FunctionDefinitionParameters,
     variadic: bool,
-    return_type: ?[]const u8,
+    return_type: ?*Node, 
     external: bool,
     constructor: bool,
     body: NodeList,
@@ -129,11 +129,18 @@ pub const FunctionDefinitionNode = struct {
         try writer.writeAll("</parameters>\n");
             
         // Add tabs
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
-
-        try std.fmt.format(writer, "<type>{?s}</type>\n", .{self.return_type});
+        if (self.return_type) |return_type| {
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+            try writer.writeAll("<type>\n");
             
+            try return_type.writeXML(writer, tabs + 2);
+
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+            try writer.writeAll("</type>\n");
+        }
+
         // Add tabs
         i = 0;
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
@@ -864,6 +871,7 @@ pub const ExtendStatementNode = struct {
 
 pub const InterfaceNode = struct {
     name: []const u8,
+    generics: std.ArrayList([]const u8),
     body: NodeList,
 
     pub fn writeXML(self: *const InterfaceNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
@@ -948,6 +956,49 @@ pub const PrototypeNode = struct {
     }
 };
 
+pub const GenericCallNode = struct {
+    name: []const u8,
+    parameters: NodeList,
+
+    pub fn writeXML(self: *const GenericCallNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<generic-call id=\"{d}\">\n", .{id});
+
+        // Add tabs (+ 1)
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        
+        try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
+
+        // Add tabs (+ 1)
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        
+        try writer.writeAll("<parameters>");
+        i = 0;
+        for (self.parameters.items) |param| {
+            if (i == 0) try writer.writeAll("\n");
+            try param.writeXML(writer, tabs + 2);
+            i += 1;
+        }
+        if (self.parameters.items.len > 0) {
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        }
+        try writer.writeAll("</parameters>\n");
+
+        // Add tabs
+        i = 0;        
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</generic-call>\n");
+    }
+};
+
 // Compiler Instruction - Pure C
 pub const CI_PureCNode = struct {
     code: []const u8,
@@ -982,6 +1033,7 @@ pub const NodeTag = enum {
     ExtendStatement,
     Interface,
     Prototype,
+    GenericCall,
     CI_PureC,
 };
 
@@ -1006,6 +1058,7 @@ pub const NodeData = union(NodeTag) {
     ExtendStatement: ExtendStatementNode,
     Interface: InterfaceNode,
     Prototype: PrototypeNode,
+    GenericCall: GenericCallNode,
     CI_PureC: CI_PureCNode,
 
     pub fn makeNode(self: NodeData) Node {
@@ -1034,40 +1087,11 @@ pub const NodeData = union(NodeTag) {
             .ExtendStatement => |node| return node.writeXML(writer, tabs, id),
             .Interface => |node| return node.writeXML(writer, tabs, id),
             .Prototype => |node| return node.writeXML(writer, tabs, id),
+            .GenericCall => |node| return node.writeXML(writer, tabs, id),
             .CI_PureC => |node| return node.writeXML(writer, tabs, id),
         }
     }
-
-    pub fn format(self: *const NodeData, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
-        _ = options;
-        _ = fmt;
-
-        // self.writeXML(writer, 0);
-
-        switch (self.*) {
-            .Value => |node| node.writeXML(writer, 0) catch unreachable,
-            .FunctionDefinition => |node| node.writeXML(writer, 0) catch unreachable,
-            .FunctionCall => |node| node.writeXML(writer, 0) catch unreachable,
-            .Use => |node| node.writeXML(writer, 0) catch unreachable,
-            .Return => |node| node.writeXML(writer, 0) catch unreachable,
-            .VariableDefinition => |node| node.writeXML(writer, 0) catch unreachable,
-            .VariableCall => |node| node.writeXML(writer, 0) catch unreachable,
-            .BinaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
-            .UnaryOperation => |node| node.writeXML(writer, 0) catch unreachable,
-            .If => |node| node.writeXML(writer, 0) catch unreachable,
-            .While => |node| node.writeXML(writer, 0) catch unreachable,
-            .Label => |node| node.writeXML(writer, 0) catch unreachable,
-            .Continue => |node| node.writeXML(writer, 0) catch unreachable,
-            .Break => |node| node.writeXML(writer, 0) catch unreachable,
-            .Match => |node| node.writeXML(writer, 0) catch unreachable,
-            .Class => |node| node.writeXML(writer, 0) catch unreachable,
-            .Type => |node| node.writeXML(writer, 0) catch unreachable,
-            .ExtendStatement => |node| node.writeXML(writer, 0) catch unreachable,
-            .Interface => |node| node.writeXML(writer, 0) catch unreachable,
-            .Prototype => |node| node.writeXML(writer, 0) catch unreachable,
-            .CI_PureC => |node| node.writeXML(writer, 0) catch unreachable,
-        }
-    }
+    
 };
 
 pub const Node = struct {
@@ -1090,9 +1114,9 @@ pub const Node = struct {
         return self.data.writeXML(writer, tabs, self.id);
     }
 
-    pub fn format(self: *const Node, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
-        return self.data.format(fmt, options, writer);
-    }
+    // pub fn format(self: *const Node, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
+    //     return self.data.format(fmt, options, writer);
+    // }
 };
 
 pub const NodeList = std.ArrayList(Node);
@@ -1102,9 +1126,10 @@ pub const NodeInfo = struct {
     position: position.Positioned(void),
     symbol_def: ?usize = null,
     symbol_call: ?usize = null,
-    data_type: ?[]const u8 = null,
+    data_type: ?*Node = null,
     renamed: ?[]const u8 = null,
     aside_symbols: ?symbol.SymbolList = null,
+    is_generic: bool = false,
 
     pub fn writeXML(self: *const NodeInfo, writer: anytype) anyerror!void {
         try std.fmt.format(writer, "<node-info id=\"{d}\">\n", .{self.node_id});
@@ -1123,7 +1148,9 @@ pub const NodeInfo = struct {
         }
 
         if (self.data_type) |data_type| {
-            try std.fmt.format(writer, "\t<type>{s}</type>\n", .{data_type});
+            try writer.writeAll("<type>\n");
+            try data_type.writeXML(writer, 1);
+            try writer.writeAll("</type>\n");
         }
 
         if (self.renamed) |renamed| {
@@ -1133,6 +1160,8 @@ pub const NodeInfo = struct {
         if (self.aside_symbols) |aside| {
             try std.fmt.format(writer, "\t<aside-symbols>{}</aside-symbols>\n", .{aside.items.len});
         }
+
+        try std.fmt.format(writer, "<is-generic>{}</is-generic>", .{self.is_generic});
 
         try writer.writeAll("</node-info>\n");
     }
@@ -1295,12 +1324,14 @@ pub const Parser = struct {
         var end = self.getCurrent().?.end;
         self.advance();
 
-        var return_type: ?[]const u8 = null;
+        var return_type: ?*Node = null;
         if (self.getCurrent() != null) {
             current = self.getCurrent().?;
             if (current.data.isSymbol(lexer.TokenSymbol.Colon)) {
                 self.advance();
-                return_type = self.expectIdentifier();
+                return_type = self.allocator.create(Node) catch unreachable;
+                const return_type_id = self.expectIdentifier();
+                return_type.?.* = self.handleIdentifier(return_type_id);
                 end = self.getCurrent().?.end;
                 self.advance();
             }
@@ -1867,12 +1898,48 @@ pub const Parser = struct {
         return node;
     }
 
+    fn parseGenericCall(self: *Parser, id: []const u8, start: position.Position) Node {
+        self.advance();
+        var parameters = NodeList.init(self.allocator);
+        var current = self.expectCurrent("]");
+        while (!current.data.isSymbol(lexer.TokenSymbol.RightBracket)) {
+            if (parameters.items.len != 0) {
+                self.expectSymbol(lexer.TokenSymbol.Comma);
+                self.advance();
+            }
+            const expr = self.parseExpr();
+            parameters.append(expr) catch unreachable;
+            current = self.expectCurrent("]");
+        }
+        const end = self.getCurrent().?.end;
+        
+        // Generate node
+        const node = Node.gen(NodeData {
+            .GenericCall = .{
+                .name = id,
+                .parameters = parameters
+            }
+        });
+
+        // Generate informations
+        self.infos.append(NodeInfo {
+            .node_id = node.id,
+            .position = position.Positioned(void).init(void {}, start, end)
+        }) catch unreachable;
+
+        return node;
+    }
+
     fn handleIdentifier(self: *Parser, id: []const u8) Node {
         if (self.peek(1)) |next| {
             if (next.data.isSymbol(lexer.TokenSymbol.LeftParenthesis)) {
                 const start = self.getCurrent().?.start;
                 self.advance();
                 return self.parseFunctionCall(id, start);
+            } else if (next.data.isSymbol(lexer.TokenSymbol.LeftBracket)) {
+                const start = self.getCurrent().?.start;
+                self.advance();
+                return self.parseGenericCall(id, start);
             }
         }
 
@@ -2524,11 +2591,30 @@ pub const Parser = struct {
         var end = self.getCurrent().?.end;
         self.advance();
 
+        var generics = std.ArrayList([]const u8).init(self.allocator);
+        if (self.getCurrent() != null) {
+            var current = self.getCurrent().?;
+            if (current.data.isSymbol(lexer.TokenSymbol.LeftBracket)) {
+                self.advance();
+                while (!current.data.isSymbol(lexer.TokenSymbol.RightBracket)) {
+                    if (generics.items.len != 0) {
+                        self.expectSymbol(lexer.TokenSymbol.Comma);
+                        self.advance();
+                    }
+                    generics.append(self.expectIdentifier()) catch unreachable;
+                    self.advance();
+                    current = self.expectCurrent(")");
+                }
+                self.advance();
+            }
+        }
+
         // Generate symbol
         const sym_count = self.symbols.items.len;
         const sym = symbol.Symbol.gen(symbol.SymbolData {
             .Interface = symbol.InterfaceSymbol {
                 .name = name,
+                .generics = generics,
                 .children = symbol.SymbolList.init(self.allocator),
             }
         }, symbol.Symbol.NO_ID);
@@ -2563,6 +2649,7 @@ pub const Parser = struct {
         const node = Node.gen(NodeData {
             .Interface = InterfaceNode {
                 .name = name,
+                .generics = generics,
                 .body = body
             }
         });

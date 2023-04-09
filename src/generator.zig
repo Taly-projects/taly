@@ -311,6 +311,24 @@ pub const Scope = struct {
         }
         return null;
     }
+
+    pub fn isGeneric(self: *const Scope, name: []const u8) bool {
+        if (self.parent) |parent| {
+            if (parent.scope) |scope| {
+                switch (scope.data) {
+                    .Interface => |intf| {
+                        for (intf.generics.items) |extension| {
+                            if (std.mem.eql(u8, extension, name)) return true;
+                        }
+                    },
+                    else => {}
+                }
+            }
+
+            return parent.isGeneric(name);
+        }
+        return false;
+    }
 };
 
 
@@ -406,11 +424,40 @@ pub const Generator = struct {
 
         
         // Genreate type info
+        info.data_type = self.allocator.create(parser.Node) catch unreachable;
         switch (node.data.Value) {
-            .String => info.data_type = "c_string",
-            .Int => info.data_type = "c_int",
-            .Float => info.data_type = "c_float",
-            .Bool => info.data_type = "bool",
+            .String => info.data_type.?.* = parser.Node {
+                .id = parser.Node.NO_ID,
+                .data = parser.NodeData {
+                    .VariableCall = parser.VariableCallNode {
+                    .name = "c_string" 
+                    }
+                }
+            },
+            .Int => info.data_type.?.* = parser.Node {
+                .id = parser.Node.NO_ID,
+                .data = parser.NodeData {
+                    .VariableCall = parser.VariableCallNode {
+                    .name = "c_int" 
+                    }
+                }
+            },
+            .Float => info.data_type.?.* = parser.Node {
+                .id = parser.Node.NO_ID,
+                .data = parser.NodeData {
+                    .VariableCall = parser.VariableCallNode {
+                    .name = "c_float" 
+                    }
+                }
+            },
+            .Bool => info.data_type.?.* = parser.Node {
+                .id = parser.Node.NO_ID,
+                .data = parser.NodeData {
+                    .VariableCall = parser.VariableCallNode {
+                    .name = "c_bool" 
+                    }
+                }
+            },
         }
 
         return node;
@@ -474,8 +521,18 @@ pub const Generator = struct {
                 }, parser.Node.NO_ID));
 
                 // Update return type
-                sym.data.Function.return_type = class.data.Class.name;
-                new_node.data.FunctionDefinition.return_type = class.data.Class.name;
+                new_node.data.FunctionDefinition.return_type = self.allocator.create(parser.Node) catch unreachable;
+                new_node.data.FunctionDefinition.return_type.?.* = parser.Node.gen(parser.NodeData {
+                    .VariableCall = parser.VariableCallNode {
+                        .name = class.data.Class.name
+                    }
+                });
+                sym.data.Function.return_type = new_node.data.FunctionDefinition.return_type;
+                self.infos.append(parser.NodeInfo {
+                    .node_id = new_node.id,
+                    .position = info.position,
+                    .symbol_call = class.id
+                }) catch unreachable;
 
                 is_constructor = true;
             } else {
@@ -582,6 +639,16 @@ pub const Generator = struct {
             body.append(self.generateNode(child)) catch unreachable;
         }
 
+        // Check if return type is generic
+        if (node.data.FunctionDefinition.return_type) |return_node| {
+            if (return_node.data == parser.NodeTag.VariableCall) {
+                if (self.scope.isGeneric(return_node.data.VariableCall.name)) {
+                    const return_node_info = self.getInfo(return_node.id).?;
+                    return_node_info.is_generic = true;
+                }
+            }
+        }
+
         // Generate return
         if (is_constructor) {
             var returned_value = self.allocator.create(parser.Node) catch unreachable;
@@ -670,12 +737,15 @@ pub const Generator = struct {
             // Only check type if not part of variadic
             if (i < defined_param_count) {
                 const defined_param = function_symbol.data.Function.parameters.items[i];
+                _ = defined_param;
                 
                 const param_info = self.getInfo(generated_param.id).?;
                 if (param_info.data_type) |data_type| {
-                    if (!std.mem.eql(u8, defined_param.data_type, data_type)) {
-                        @panic("todo");
-                    }
+                    _ = data_type;
+                    // TODO: Check data type
+                    // if (!std.mem.eql(u8, defined_param.data_type, data_type)) {
+                    //     @panic("todo");
+                    // }
                 } else {
                     param.writeXML(std.io.getStdOut().writer(), 0) catch unreachable;
                     @panic("todo (no info type)");
@@ -734,26 +804,28 @@ pub const Generator = struct {
 
             const value_info = self.getInfo(gen_value.id).?;
             if (value_info.data_type) |data_type| {
-                if (!std.mem.eql(u8, data_type, node.data.VariableDefinition.data_type)) {
-                    var found = false;
-                    if (self.getAlias(data_type)) |alias| {
-                        if (std.mem.eql(u8, alias.data.TypeAlias.value, node.data.VariableDefinition.data_type)) {
-                            found = true;
-                        }
-                    }
+                _ = data_type;
+                // TODO: Check type
+                // if (!std.mem.eql(u8, data_type, node.data.VariableDefinition.data_type)) {
+                //     var found = false;
+                //     if (self.getAlias(data_type)) |alias| {
+                //         if (std.mem.eql(u8, alias.data.TypeAlias.value, node.data.VariableDefinition.data_type)) {
+                //             found = true;
+                //         }
+                //     }
 
-                    if (!found) {
-                        if (self.getAlias(node.data.VariableDefinition.data_type)) |alias| {
-                            if (std.mem.eql(u8, alias.data.TypeAlias.value, data_type)) {
-                                found = true;
-                            }
-                        }
-                    }
+                //     if (!found) {
+                //         if (self.getAlias(node.data.VariableDefinition.data_type)) |alias| {
+                //             if (std.mem.eql(u8, alias.data.TypeAlias.value, data_type)) {
+                //                 found = true;
+                //             }
+                //         }
+                //     }
 
-                    if (!found) {
-                        @panic("todo");
-                    }
-                }
+                //     if (!found) {
+                //         @panic("todo");
+                //     }
+                // }
             } else {
                 @panic("todo");
             }
@@ -784,7 +856,15 @@ pub const Generator = struct {
 
         if (self.scope.getVariable(&self.symbols, var_name)) |variable| {
             sym = variable;
-            info.data_type = sym.data.Variable.data_type;
+            info.data_type = self.allocator.create(parser.Node) catch unreachable;
+            info.data_type.?.* = parser.Node {
+                .id = parser.Node.NO_ID,
+                .data = parser.NodeData {
+                    .VariableCall = parser.VariableCallNode {
+                        .name = sym.data.Variable.data_type
+                    }
+                }
+            };
         } else if (self.scope.getClass(&self.symbols, var_name)) |class| {
             sym = class;
         } else {
@@ -901,9 +981,11 @@ pub const Generator = struct {
 
             // Check type
             if (rhs_info.data_type) |data_type| {
-                if (!std.mem.eql(u8, data_type, symbol.data.Variable.data_type)) {
-                    @panic("todo");
-                }
+                _ = data_type;
+                // TODO: Check data type
+                // if (!std.mem.eql(u8, data_type, symbol.data.Variable.data_type)) {
+                //     @panic("todo");
+                // }
             } else {
                 @panic("todo");
             }

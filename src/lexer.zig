@@ -99,6 +99,8 @@ pub const TokenSymbol = enum {
     ExclamationMarkEqual,
     Dot,
     TripleDot,
+    LeftBracket,
+    RightBracket,
 
     pub fn format(self: *const TokenSymbol, comptime fmt: []const u8, options: anytype, writer: anytype) !void {
         // _ = fmt;
@@ -124,6 +126,8 @@ pub const TokenSymbol = enum {
                 .ExclamationMarkEqual => return std.fmt.format(writer, "Exclamation Mark Equal `!=`", .{}),
                 .Dot => return std.fmt.format(writer, "Dot `.`", .{}),
                 .TripleDot => return std.fmt.format(writer, "Triple Dot `...`", .{}),
+                .LeftBracket => return std.fmt.format(writer, "Left Bracket `[`", .{}),
+                .RightBracket => return std.fmt.format(writer, "Right Bracket `]`", .{}),
             }
         } else {
             switch (self.*) {
@@ -145,6 +149,8 @@ pub const TokenSymbol = enum {
                 .ExclamationMarkEqual => return std.fmt.format(writer, "!=", .{}),
                 .Dot => return std.fmt.format(writer, ".", .{}),
                 .TripleDot => return std.fmt.format(writer, "...", .{}),
+                .LeftBracket => return std.fmt.format(writer, "[", .{}),
+                .RightBracket => return std.fmt.format(writer, "]", .{}),
             }
         }
     }
@@ -486,6 +492,8 @@ pub const Lexer = struct {
                     },
                     '(' => tokens.append(self.makeSingle(Token { .Symbol = .LeftParenthesis })) catch unreachable,
                     ')' => tokens.append(self.makeSingle(Token { .Symbol = .RightParenthesis })) catch unreachable,
+                    '[' => tokens.append(self.makeSingle(Token { .Symbol = .LeftBracket })) catch unreachable,
+                    ']' => tokens.append(self.makeSingle(Token { .Symbol = .RightBracket })) catch unreachable,
                     ',' => tokens.append(self.makeSingle(Token { .Symbol = .Comma })) catch unreachable,
                     '=' => {
                         const next = self.peek(1);

@@ -53,7 +53,7 @@ pub const FunctionSymbol = struct {
     variadic: bool = false,
     name: []const u8,
     parameters: parser.FunctionDefinitionParameters,
-    return_type: ?[]const u8,
+    return_type: ?*parser.Node,
     children: SymbolList,
 
     pub fn writeXML(self: *const FunctionSymbol, writer: anytype, tabs: usize, id: usize, node_id: usize) anyerror!void {
@@ -87,11 +87,19 @@ pub const FunctionSymbol = struct {
 
         try std.fmt.format(writer, "<name>{s}</name>\n", .{self.name});
 
-        // Add tabs
-        i = 0;
-        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        if (self.return_type) |return_type| {
+            // Add tabs
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
 
-        try std.fmt.format(writer, "<return-type>{s}</return-type>\n", .{self.return_type orelse "void"});
+            try writer.writeAll("<return-type>\n");
+            
+            try return_type.writeXML(writer, tabs + 2);
+
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+            try writer.writeAll("</return-type>\n");
+        }
 
         // Add tabs
         i = 0;
@@ -262,6 +270,7 @@ pub const TypeAliasSymbol = struct {
 
 pub const InterfaceSymbol = struct {
     name: []const u8,
+    generics: std.ArrayList([]const u8),
     children: SymbolList,
 
     pub fn writeXML(self: *const InterfaceSymbol, writer: anytype, tabs: usize, id: usize, node_id: usize) anyerror!void {

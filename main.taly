@@ -1,30 +1,10 @@
 use "test"
 use "person"
 
-# TODO: Auto return for functions (like the makeNoise one)
-
-intf IAnimal
-    fn makeNoise(): c_string
-
-class Dog: IAnimal
-    fn makeNoise(): c_string => "Woof"
-
-intf IGetName
-    fn getName(): c_string
-
-# extend Person
-#     fn getName(): c_string => return (self.name)
-
-extend Person with IGetName
-    fn getName(): c_string => return self.name
-
-proto PVehicle
-    var wheels: c_int
-
-    fn honk(): c_string
+intf Cast[T]
+    fn cast(): T
 
 # main function
 fn main() =>
     var person: Person2 = Person2.create("Tautvydas", 12)
     person.sayHello()
-    sayHello(person.getName())
