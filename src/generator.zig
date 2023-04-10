@@ -511,10 +511,20 @@ pub const Generator = struct {
                 });
                 body.append(self_node) catch unreachable;
 
+                var self_type = self.allocator.create(parser.Node) catch unreachable;
+                self_type.* = parser.Node.gen(parser.NodeData {
+                    .VariableCall = parser.VariableCallNode {
+                        .name = class.data.Class.name
+                    }
+                });
                 self.addSymbol(parser.Symbol.gen(parser.SymbolData {
                     .Variable = parser.VariableSymbol {
                         .name = "self",
-                        .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable,
+                        .data_type = parser.Node.gen(parser.NodeData {
+                            .PointerCall = parser.PointerCallNode {
+                                .node = self_type
+                            }
+                        }),
                         .initialized = true,
                         .constant = true,
                     }
@@ -555,9 +565,21 @@ pub const Generator = struct {
                     // TODO: Check if return type match
 
                     // Add self
+                    var void_type = self.allocator.create(parser.Node) catch unreachable;
+                    void_type.* = parser.Node.gen(parser.NodeData {
+                        .VariableCall = parser.VariableCallNode {
+                            .name = "void"
+                        }
+                    });
+                    var void_ptr_type = self.allocator.create(parser.Node) catch unreachable;
+                    void_ptr_type.* = parser.Node.gen(parser.NodeData {
+                        .PointerCall = parser.PointerCallNode {
+                            .node = void_type
+                        }
+                    });
                     parameters.append(parser.FunctionDefinitionParameter {
                         .name = "self_void",
-                        .data_type = "void*",
+                        .data_type = void_ptr_type,
                     }) catch unreachable;
                     
                     // Convert self
@@ -567,11 +589,23 @@ pub const Generator = struct {
                             .code = std.mem.concat(self.allocator, u8, &[_][]const u8 { "(", class.data.Class.name, "*) self_void"}) catch unreachable,
                         }
                     });
+                    var self_type = self.allocator.create(parser.Node) catch unreachable;
+                    void_type.* = parser.Node.gen(parser.NodeData {
+                        .VariableCall = parser.VariableCallNode {
+                            .name = class.data.Class.name
+                        }
+                    });
+                    var self_ptr_type = self.allocator.create(parser.Node) catch unreachable;
+                    void_ptr_type.* = parser.Node.gen(parser.NodeData {
+                        .PointerCall = parser.PointerCallNode {
+                            .node = self_type
+                        }
+                    });
                     body.append(parser.Node.gen(parser.NodeData {
                         .VariableDefinition = parser.VariableDefinitionNode {
                             .constant = false,
                             .name = "self",
-                            .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8 { class.data.Class.name, "*" }) catch unreachable,
+                            .data_type = self_ptr_type,
                             .value = value,
                         }
                     })) catch unreachable;
@@ -580,16 +614,32 @@ pub const Generator = struct {
                     self.addSymbol(parser.Symbol.gen(parser.SymbolData {
                         .Variable = parser.VariableSymbol {
                             .name = "self",
-                            .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable,
+                            .data_type = parser.Node.gen(parser.NodeData {
+                                .PointerCall = parser.PointerCallNode {
+                                    .node = self_type
+                                }
+                            }),
                             .initialized = true,
                             .constant = true,
                         }
                     }, parser.Node.NO_ID));
                 } else {
                     // Add self parameter
+                    var self_type = self.allocator.create(parser.Node) catch unreachable;
+                    self_type.* = parser.Node.gen(parser.NodeData {
+                        .VariableCall = parser.VariableCallNode {
+                            .name = class.data.Class.name
+                        }
+                    });
+                    var self_ptr_type = self.allocator.create(parser.Node) catch unreachable;
+                    self_ptr_type.* = parser.Node.gen(parser.NodeData {
+                        .PointerCall = parser.PointerCallNode {
+                            .node = self_type
+                        }
+                    });
                     parameters.append(parser.FunctionDefinitionParameter {
                         .name = "self",
-                        .data_type = std.mem.concat(self.allocator, u8, &[_][]const u8{class.data.Class.name, "*"}) catch unreachable
+                        .data_type = self_ptr_type
                     }) catch unreachable;
                 }             
 
@@ -601,9 +651,21 @@ pub const Generator = struct {
                 @panic("todo (no constructor in interfaces)");
             } else {
                 // Add self parameter
+                    var void_type = self.allocator.create(parser.Node) catch unreachable;
+                    void_type.* = parser.Node.gen(parser.NodeData {
+                        .VariableCall = parser.VariableCallNode {
+                            .name = "void"
+                        }
+                    });
+                    var void_ptr_type = self.allocator.create(parser.Node) catch unreachable;
+                    void_ptr_type.* = parser.Node.gen(parser.NodeData {
+                        .PointerCall = parser.PointerCallNode {
+                            .node = void_type
+                        }
+                    });
                 parameters.append(parser.FunctionDefinitionParameter {
                     .name = "super",
-                    .data_type = "void*"
+                    .data_type = void_ptr_type
                 }) catch unreachable;
             }
         } else if (self.scope.getParentPrototype()) |proto| {
@@ -613,9 +675,21 @@ pub const Generator = struct {
                 @panic("todo (no constructor in interfaces)");
             } else {
                 // Add self parameter
+                    var void_type = self.allocator.create(parser.Node) catch unreachable;
+                    void_type.* = parser.Node.gen(parser.NodeData {
+                        .VariableCall = parser.VariableCallNode {
+                            .name = "void"
+                        }
+                    });
+                    var void_ptr_type = self.allocator.create(parser.Node) catch unreachable;
+                    void_ptr_type.* = parser.Node.gen(parser.NodeData {
+                        .PointerCall = parser.PointerCallNode {
+                            .node = void_type
+                        }
+                    });
                 parameters.append(parser.FunctionDefinitionParameter {
                     .name = "super",
-                    .data_type = "void*"
+                    .data_type = void_ptr_type
                 }) catch unreachable;
             }
         }
@@ -626,7 +700,7 @@ pub const Generator = struct {
             self.addSymbol(parser.Symbol.gen(parser.SymbolData {
                 .Variable = parser.VariableSymbol {
                     .name = param.name,
-                    .data_type = param.data_type,
+                    .data_type = param.data_type.*,
                     .constant = true,
                     .initialized = true
                 }
@@ -728,6 +802,10 @@ pub const Generator = struct {
             symbol_info.position.errorMessage("Defined here:", .{});
         }
 
+        // Remove entered
+        const entered = self.scope.entered;
+        self.scope.entered = null;
+
         var parameters = parser.NodeList.init(self.allocator);
         var i: usize = 0;
         for (node.data.FunctionCall.parameters.items) |param| {
@@ -754,6 +832,7 @@ pub const Generator = struct {
 
             i += 1;
         }
+        self.scope.entered = entered;
 
         // Generate type info for node (based on return type of the function)
         const info = self.getInfo(node.id).?;
@@ -857,17 +936,14 @@ pub const Generator = struct {
         if (self.scope.getVariable(&self.symbols, var_name)) |variable| {
             sym = variable;
             info.data_type = self.allocator.create(parser.Node) catch unreachable;
-            info.data_type.?.* = parser.Node {
-                .id = parser.Node.NO_ID,
-                .data = parser.NodeData {
-                    .VariableCall = parser.VariableCallNode {
-                        .name = sym.data.Variable.data_type
-                    }
-                }
-            };
+            info.data_type.?.* = sym.data.Variable.data_type;
         } else if (self.scope.getClass(&self.symbols, var_name)) |class| {
             sym = class;
         } else {
+            self.scope.scope.?.writeXML(std.io.getStdOut().writer(), 1) catch unreachable;
+            self.scope.entered.?.writeXML(std.io.getStdOut().writer(), 1) catch unreachable;
+            info.position.errorMessageReturn("", .{});
+            std.log.info("{s} {}", .{var_name, self.scope.entered == null});
             @panic("todo");
         }
 
@@ -905,9 +981,12 @@ pub const Generator = struct {
 
             var can_access_field = false;
             if (sym.data == parser.SymbolTag.Variable) {
-                var class_name = if (std.mem.endsWith(u8, sym.data.Variable.data_type, "*")) blk: {
-                    break :blk sym.data.Variable.data_type[0..(sym.data.Variable.data_type.len - 1)];
-                } else sym.data.Variable.data_type;
+                var class_name = switch (sym.data.Variable.data_type.data) {
+                    .VariableCall => |var_call| var_call.name,
+                    .PointerCall => |ptr_call| ptr_call.node.data.VariableCall.name, // TODO: Change to allow multi ptr and generic ptr.
+                    .GenericCall => @panic("todo"),
+                    else => unreachable
+                };
 
                 if (self.getAlias(class_name)) |sym_alias| {
                     class_name = sym_alias.data.TypeAlias.value;
@@ -916,6 +995,9 @@ pub const Generator = struct {
                 if (self.getClass(class_name)) |sym_class| {
                     self.scope.entered = sym_class;
                 } else {
+                    lhs_info.position.errorMessageReturn("", .{});
+                    gen_lhs.writeXML(std.io.getStdOut().writer(), 0) catch unreachable;
+                    std.log.info("Could not get class {s}", .{class_name});
                     @panic("todo");
                 }
 
@@ -1005,9 +1087,26 @@ pub const Generator = struct {
         // TODO: Generate type info
         // TODO: Check scope (possible here)
 
-        _ = self;
+        var new_node = node;
+        const info = self.getInfo(node.id).?;
+
+        if (node.data.UnaryOperation.operator == parser.Operator.Deref) {
+            const gen_value = self.generateNode(node.data.UnaryOperation.value.*);
+            const gen_info = self.getInfo(gen_value.id).?;
+
+            if (gen_info.data_type) |data_type| {
+                if (data_type.data != parser.NodeTag.PointerCall) {
+                    @panic("todo");
+                } 
+                
+                new_node.data.UnaryOperation.value.* = gen_value;
+                info.data_type = data_type.data.PointerCall.node;
+            } else {
+                @panic("todo");
+            }
+        }
         
-        return node;
+        return new_node;
     }
 
     fn generateIf(self: *Generator, node: parser.Node) parser.Node {
@@ -1113,7 +1212,9 @@ pub const Generator = struct {
         const info = self.getInfo(node.id).?;
 
         // Get matching class
-        const class_sym = self.getClass(node.data.ExtendStatement.name) orelse {
+        const class_name = if (self.getAlias(node.data.ExtendStatement.name)) |alias| alias.data.TypeAlias.value else node.data.ExtendStatement.name;
+
+        const class_sym = self.getClass(class_name) orelse {
             @panic("todo");
         };
 
@@ -1232,11 +1333,25 @@ pub const Generator = struct {
             .ExtendStatement => return self.generateExtend(node),
             .Interface => return self.generateInterface(node),
             .Prototype => return self.generatePrototype(node),
+            .PointerCall => unreachable,
             else => return node
         }
     }
 
+    fn generateDefaultTypes(self: *Generator) void {
+        self.symbols.append(parser.Symbol.gen(parser.SymbolData {
+            .Class = parser.ClassSymbol {
+                .name = "c_int",
+                .extensions = std.ArrayList([]const u8).init(self.allocator),
+                .children = parser.SymbolList.init(self.allocator),
+                .sealed = false,
+            }
+        }, parser.Node.NO_ID)) catch unreachable;
+    }
+
     pub fn generate(self: *Generator) struct { parser.NodeList, parser.NodeInfos, parser.SymbolList } {
+        self.generateDefaultTypes();
+        
         var ast = parser.NodeList.init(self.allocator);
 
         while(self.getCurrent()) |current| {

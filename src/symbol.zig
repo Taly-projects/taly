@@ -3,7 +3,7 @@ const parser = @import("parser.zig");
 
 pub const VariableSymbol = struct {
     name: []const u8,
-    data_type: []const u8,
+    data_type: parser.Node,
     constant: bool,
     initialized: bool,
 
@@ -23,8 +23,13 @@ pub const VariableSymbol = struct {
         // Add tabs
         i = 0;
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        try writer.writeAll("<type>\n");
 
-        try std.fmt.format(writer, "<type>{s}</type>\n", .{self.data_type});
+        try self.data_type.writeXML(writer, tabs + 2);
+
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        try writer.writeAll("</type>\n");
 
         // Add tabs
         i = 0;

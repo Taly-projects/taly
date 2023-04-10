@@ -1,10 +1,42 @@
-use "test"
-use "person"
+use "std-stdio"
+
+extern fn printf(msg: c_string, ...)
 
 intf Cast[T]
     fn cast(): T
 
+type I32 = c_int
+
+class Vec1I32
+    var x: I32
+
+    new create(x: I32) =>
+        self.x = x
+
+    fn print() =>
+        printf("Vec1I32 {\n\tx: %d\n}\n", self.x)
+
+extend I32 with Cast[Vec1I32]
+    fn cast(): Vec1I32 => Vec1I32.create(deref self)
+
+class Vec2I32
+    var x: I32
+    var y: I32
+
+    new create(x: I32, y: I32) =>
+        self.x = x
+        self.y = y
+
+    fn print() =>
+        printf("Vec2I32 {\n\tx: %d\n\ty: %d\n}\n", self.x, self.y)
+
+extend Vec1I32 with Cast[Vec2I32]
+    fn cast(): Vec2I32 => Vec2I32.create(self.x, 0)
+
 # main function
-fn main() =>
-    var person: Person2 = Person2.create("Tautvydas", 12)
-    person.sayHello()
+fn main() => 
+    var my_i32: I32 = 12
+    var my_vec: Vec1I32 = my_i32.cast()
+    my_vec.print()
+    var my_vec2: Vec2I32 = my_vec.cast()
+    my_vec2.print()

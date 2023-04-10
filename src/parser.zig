@@ -55,7 +55,7 @@ pub const ValueNode = union(ValueNodeTag) {
 
 pub const FunctionDefinitionParameter = struct {
     name: []const u8,
-    data_type: []const u8,
+    data_type: *Node,
 
     pub fn writeXML(self: *const FunctionDefinitionParameter, writer: anytype, tabs: usize) anyerror!void {
         // Add tabs
@@ -74,7 +74,14 @@ pub const FunctionDefinitionParameter = struct {
         i = 0;
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
         
-        try std.fmt.format(writer, "<type>{s}</type>\n", .{self.data_type});
+        try writer.writeAll("<type>\n");
+
+        try self.data_type.writeXML(writer, tabs + 2);
+
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        
+        try writer.writeAll("</type>\n");
 
         // Add tabs
         i = 0;        
@@ -277,7 +284,7 @@ pub const ReturnNode = struct {
 pub const VariableDefinitionNode = struct {
     constant: bool,
     name: []const u8,
-    data_type: []const u8,
+    data_type: *Node,
     value: ?*Node,
 
     pub fn writeXML(self: *const VariableDefinitionNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
@@ -302,9 +309,14 @@ pub const VariableDefinitionNode = struct {
         // Add tabs (+ 1)
         i = 0;
         while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        try writer.writeAll("<data-type>\n");
+        
+        try self.data_type.writeXML(writer, tabs + 2);
+        
+        i = 0;
+        while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+        try writer.writeAll("</data-type>\n");
     
-        try std.fmt.format(writer, "<data-type>{s}</data-type>\n", .{self.data_type});
-
         if (self.value) |value| {
             // Add tabs (+ 1)
             i = 0;
@@ -357,6 +369,7 @@ pub const Operator = enum {
     Or,
     Not,
     Access,
+    Deref,
 
     pub fn writeXML(self: *const Operator, writer: anytype, tabs: usize) anyerror!void {
         // Add tabs
@@ -380,6 +393,7 @@ pub const Operator = enum {
             .Or => try writer.writeAll("or"),
             .Not => try writer.writeAll("not"),
             .Access => try writer.writeAll("access"),
+            .Deref => try writer.writeAll("deref"),
         }
         try writer.writeAll("</operator\n>");
     }
@@ -818,7 +832,7 @@ pub const TypeNode = struct {
 
 pub const ExtendStatementNode = struct {
     name: []const u8,
-    with: ?[]const u8,
+    with: ?*Node,
     body: NodeList,
 
     pub fn writeXML(self: *const ExtendStatementNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
@@ -838,8 +852,13 @@ pub const ExtendStatementNode = struct {
             // Add tabs
             i = 0;
             while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+            try writer.writeAll("<with>");
 
-            try std.fmt.format(writer, "<with>{s}</with>", .{with});
+            try with.writeXML(writer, tabs + 2);
+            
+            i = 0;
+            while (i < tabs + 1) : (i += 1) try writer.writeAll("\t");
+            try writer.writeAll("</with>");
         }
 
         if (self.body.items.len != 0) {
@@ -999,6 +1018,26 @@ pub const GenericCallNode = struct {
     }
 };
 
+pub const PointerCallNode = struct {
+    node: *Node,
+
+    pub fn writeXML(self: *const PointerCallNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<pointer-call id=\"{d}\">\n", .{id});
+
+        try self.node.writeXML(writer, tabs + 1);
+
+        // Add tabs
+        i = 0;        
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try writer.writeAll("</generic-call>\n");
+    }
+};
+
 // Compiler Instruction - Pure C
 pub const CI_PureCNode = struct {
     code: []const u8,
@@ -1034,6 +1073,7 @@ pub const NodeTag = enum {
     Interface,
     Prototype,
     GenericCall,
+    PointerCall,
     CI_PureC,
 };
 
@@ -1059,6 +1099,7 @@ pub const NodeData = union(NodeTag) {
     Interface: InterfaceNode,
     Prototype: PrototypeNode,
     GenericCall: GenericCallNode,
+    PointerCall: PointerCallNode,
     CI_PureC: CI_PureCNode,
 
     pub fn makeNode(self: NodeData) Node {
@@ -1088,6 +1129,7 @@ pub const NodeData = union(NodeTag) {
             .Interface => |node| return node.writeXML(writer, tabs, id),
             .Prototype => |node| return node.writeXML(writer, tabs, id),
             .GenericCall => |node| return node.writeXML(writer, tabs, id),
+            .PointerCall => |node| return node.writeXML(writer, tabs, id),
             .CI_PureC => |node| return node.writeXML(writer, tabs, id),
         }
     }
@@ -1313,7 +1355,9 @@ pub const Parser = struct {
             self.advance();
             self.expectSymbol(lexer.TokenSymbol.Colon);
             self.advance();
-            const param_type = self.expectIdentifier();
+            const param_type_id = self.expectIdentifier();
+            var param_type = self.allocator.create(Node) catch unreachable;
+            param_type.* = self.handleIdentifier(param_type_id);
             self.advance();
             parameters.append(FunctionDefinitionParameter {
                 .name = param_name,
@@ -1437,6 +1481,28 @@ pub const Parser = struct {
                     const node = Node.gen(NodeData {
                         .UnaryOperation = .{
                             .operator = .Not,
+                            .value = value
+                        }
+                    });
+
+                    // Get positions
+                    const end = self.get_infos(value.id).position.end;
+
+                    // Generate node informations
+                    self.infos.append(NodeInfo {
+                        .node_id = node.id,
+                        .position = position.Positioned(void).init(void {}, start, end)
+                    }) catch unreachable;
+
+                    return node;
+                } else if (keyword == lexer.TokenKeyword.Deref) {
+                    const start = current.start;
+                    self.advance();
+                    var value = self.allocator.create(Node) catch unreachable;
+                    value.* = self.parseValue();
+                    const node = Node.gen(NodeData {
+                        .UnaryOperation = .{
+                            .operator = .Deref,
                             .value = value
                         }
                     });
@@ -2025,7 +2091,9 @@ pub const Parser = struct {
         // Expexcted because no inference for now!
         self.expectSymbol(lexer.TokenSymbol.Colon);
         self.advance();
-        const data_type = self.expectIdentifier();
+        const data_type_id = self.expectIdentifier();
+        var data_type = self.allocator.create(Node) catch unreachable;
+        data_type.* = self.handleIdentifier(data_type_id);
         end = self.getCurrent().?.end;
         self.advance();
 
@@ -2053,7 +2121,7 @@ pub const Parser = struct {
         const sym = symbol.Symbol.gen(symbol.SymbolData {
             .Variable = symbol.VariableSymbol {
                 .name = name,
-                .data_type = data_type,
+                .data_type = data_type.*,
                 .constant = constant,
                 .initialized = value == null,
             }
@@ -2519,12 +2587,14 @@ pub const Parser = struct {
         var end = self.getCurrent().?.end;
         self.advance();
 
-        var with: ?[]const u8 = null;
+        var with: ?*Node = null;
         if (self.getCurrent() != null) {
             var current = self.getCurrent().?;
             if (current.data.isKeyword(lexer.TokenKeyword.With)) {
+                with = self.allocator.create(Node) catch unreachable;
                 self.advance();
-                with = self.expectIdentifier();
+                var with_id = self.expectIdentifier();
+                with.?.* = self.handleIdentifier(with_id);
                 self.advance();
             }
         }
@@ -2798,7 +2868,7 @@ pub const Parser = struct {
             .Return => return self.parseReturn(),
             .Const => return self.parseVariableDefinition(true, start),
             .Var => return self.parseVariableDefinition(false, start),
-            .Not => return self.parseExpr(),
+            .Not, .Deref => return self.parseExpr(),
             .If => return self.parseIfStatement(),
             .While => return self.parseWhileLoop(),
             .Continue => return self.parseContinue(),

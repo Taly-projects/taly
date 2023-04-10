@@ -243,6 +243,7 @@ pub const Operator = enum {
     Not,
     Access,
     PointerAccess,
+    Deref,
 };
 
 pub const BinaryOperationNode = struct {
@@ -349,6 +350,10 @@ pub const UnaryOperationNode = struct {
             },
             .Not => {
                 try writer.writeAll("!");
+                _ = try self.value.writeC(writer, 0);
+            },
+            .Deref => {
+                try writer.writeAll("*");
                 _ = try self.value.writeC(writer, 0);
             },
             else => unreachable,
@@ -786,6 +791,7 @@ pub const Translator = struct {
             switch (data_type.data) {
                 .VariableCall => |var_call| return self.translateType(var_call.name), // TODO: Check if generic
                 .GenericCall => @panic("todo"),
+                .PointerCall => |ptr_call| return std.mem.concat(self.allocator, u8, &[_][]const u8 { self.translateTypeNode(ptr_call.node), "*" }) catch unreachable,
                 else => unreachable
             }
         } 
@@ -820,7 +826,7 @@ pub const Translator = struct {
         for (function_def.parameters.items) |param| {
             parameters.append(FunctionDefinitionParameter {
                 .name = param.name,
-                .data_type = self.translateType(param.data_type)
+                .data_type = self.translateTypeNode(param.data_type)
             }) catch unreachable;
         }
 
@@ -941,7 +947,7 @@ pub const Translator = struct {
         const variable_def = node.data.VariableDefinition;
         
         // Translate type
-        const new_data_type = self.translateType(variable_def.data_type);
+        const new_data_type = self.translateTypeNode(variable_def.data_type);
 
         // Translate value (if present)
         var new_value: ?*Node = null;
@@ -1081,6 +1087,7 @@ pub const Translator = struct {
             .Add => operator = .Add,
             .Subtract => operator = .Subtract,
             .Not => operator = .Not,
+            .Deref => operator = .Deref,
             else => unreachable
         }
 
@@ -1285,7 +1292,7 @@ pub const Translator = struct {
             if (child.data == parser.NodeTag.VariableDefinition) {
                 fields.append(StructField {
                     .name = child.data.VariableDefinition.name,
-                    .data_type = self.translateType(child.data.VariableDefinition.data_type),
+                    .data_type = self.translateTypeNode(child.data.VariableDefinition.data_type),
                 }) catch unreachable;
             } else if (child.data == parser.NodeTag.FunctionDefinition) {
                 methods.append(child) catch unreachable;
@@ -1312,7 +1319,7 @@ pub const Translator = struct {
         self.header.append(Node {
             .Typedef = TypedefNode {
                 .name = node.data.Type.name,
-                .value = node.data.Type.value
+                .value = self.translateType(node.data.Type.value)
             }
         }) catch unreachable;
     }
@@ -1377,7 +1384,7 @@ pub const Translator = struct {
                 for (child.data.FunctionDefinition.parameters.items) |param| {
                     if (i != 0) buf.writer().writeAll(", ") catch unreachable;
                     std.fmt.format(buf.writer(), "{s}", .{
-                        self.translateType(param.data_type)
+                        self.translateTypeNode(param.data_type)
                     }) catch unreachable; 
                     i += 1;
                 }
@@ -1391,7 +1398,18 @@ pub const Translator = struct {
 
                 var new_function: parser.Node = child;
                 new_function.data.FunctionDefinition.parameters.items[0].name = "self";
-                new_function.data.FunctionDefinition.parameters.items[0].data_type = std.mem.concat(self.allocator, u8, &[_][]const u8 { intf.name, "*" }) catch unreachable;
+                var intf_type = self.allocator.create(parser.Node) catch unreachable;
+                intf_type.* = parser.Node.gen(parser.NodeData {
+                    .VariableCall = parser.VariableCallNode {
+                        .name = intf.name
+                    }
+                });
+                new_function.data.FunctionDefinition.parameters.items[0].data_type = self.allocator.create(parser.Node) catch unreachable;
+                new_function.data.FunctionDefinition.parameters.items[0].data_type.* = parser.Node.gen(parser.NodeData {
+                    .PointerCall = parser.PointerCallNode {
+                        .node = intf_type
+                    }
+                });
                 
                 buf = std.ArrayList(u8).init(self.allocator);
                 std.fmt.format(buf.writer(), "return self->{s}_fn(self->super", .{child.data.FunctionDefinition.name}) catch unreachable;
@@ -1457,7 +1475,7 @@ pub const Translator = struct {
             if (child.data == parser.NodeTag.VariableDefinition) {
                 fields.append(StructField {
                     .name = child.data.VariableDefinition.name,
-                    .data_type = self.translateType(child.data.VariableDefinition.data_type),
+                    .data_type = self.translateTypeNode(child.data.VariableDefinition.data_type),
                 }) catch unreachable;
             } else if (child.data == parser.NodeTag.FunctionDefinition) {
                 var buf = std.ArrayList(u8).init(self.allocator);
@@ -1470,7 +1488,7 @@ pub const Translator = struct {
                 for (child.data.FunctionDefinition.parameters.items) |param| {
                     if (i != 0) buf.writer().writeAll(", ") catch unreachable;
                     std.fmt.format(buf.writer(), "{s}", .{
-                        self.translateType(param.data_type)
+                        self.translateTypeNode(param.data_type)
                     }) catch unreachable; 
                     i += 1;
                 }
@@ -1484,8 +1502,18 @@ pub const Translator = struct {
 
                 var new_function: parser.Node = child;
                 new_function.data.FunctionDefinition.parameters.items[0].name = "self";
-                new_function.data.FunctionDefinition.parameters.items[0].data_type = std.mem.concat(self.allocator, u8, &[_][]const u8 { proto.name, "*" }) catch unreachable;
-                
+                var proto_type = self.allocator.create(parser.Node) catch unreachable;
+                proto_type.* = parser.Node.gen(parser.NodeData {
+                    .VariableCall = parser.VariableCallNode {
+                        .name = proto.name
+                    }
+                });
+                new_function.data.FunctionDefinition.parameters.items[0].data_type = self.allocator.create(parser.Node) catch unreachable;
+                new_function.data.FunctionDefinition.parameters.items[0].data_type.* = parser.Node.gen(parser.NodeData {
+                    .PointerCall = parser.PointerCallNode {
+                        .node = proto_type
+                    }
+                });
                 buf = std.ArrayList(u8).init(self.allocator);
                 std.fmt.format(buf.writer(), "return self->{s}_fn(self->super", .{child.data.FunctionDefinition.name}) catch unreachable;
 
@@ -1574,6 +1602,7 @@ pub const Translator = struct {
             .Interface => nodes.appendSlice(self.translateInterface(node).items) catch unreachable,
             .Prototype => nodes.appendSlice(self.translatePrototype(node).items) catch unreachable,
             .GenericCall => nodes.appendSlice(self.translateGenericCall(node).items) catch unreachable,
+            .PointerCall => unreachable,
             .CI_PureC => nodes.append(self.translateCIPureC(node)) catch unreachable,
         }
         return nodes;
