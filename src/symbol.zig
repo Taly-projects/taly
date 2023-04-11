@@ -156,7 +156,7 @@ pub const FunctionSymbol = struct {
 pub const ClassSymbol = struct {
     sealed: bool,
     name: []const u8,
-    extensions: std.ArrayList([]const u8),
+    extensions: std.ArrayList(parser.Node),
     children: SymbolList,
 
     pub fn writeXML(self: *const ClassSymbol, writer: anytype, tabs: usize, id: usize, node_id: usize) anyerror!void {

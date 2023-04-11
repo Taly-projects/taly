@@ -2,6 +2,7 @@ const std = @import("std");
 const position = @import("position.zig");
 const parser = @import("parser.zig");
 const taly = @import("taly.zig");
+const utils = @import("utils.zig");
 
 pub const Scope = struct {
     parent: ?*Scope = null,
@@ -549,18 +550,33 @@ pub const Generator = struct {
                 // Check if it's part of the extensions
                 var extension_sym: ?*parser.Symbol = null;
                 var extension_fun: ?*parser.Symbol = null;
-                A: for (class.data.Class.extensions.items) |extension_name| {
+                var extension_node: ?*parser.Node = null;
+                A: for (class.data.Class.extensions.items) |*extension_node_temp| {
+                    // Get name from extension
+                    var extension_name: []const u8 = undefined;
+                    switch (extension_node_temp.data) {
+                        .VariableCall => |var_call| extension_name = var_call.name,
+                        .GenericCall => |gen_call| extension_name = gen_call.name, 
+                        .PointerCall => @panic("todo"),
+                        else => unreachable
+                    }
+
                     const extension = self.getInterface(extension_name).?;
                     for (extension.data.Interface.children.items) |*child| {
                         if (std.mem.eql(u8, child.data.Function.name, sym.data.Function.name)) {
                             extension_sym = extension;
                             extension_fun = child;
+                            extension_node = extension_node_temp;
                             break :A;
                         }
                     }
                 }
 
                 if (extension_sym != null) {
+                    // Get class extension (extension node in the class)
+                    info.renamed = std.mem.concat(self.allocator, u8, &[_][]const u8 {info.renamed.?, "_", utils.process_node_name(self.allocator, extension_node.?.*)}) catch unreachable;
+
+
                     // TODO: Check if parameters match
                     // TODO: Check if return type match
 
@@ -586,43 +602,50 @@ pub const Generator = struct {
                     var value = self.allocator.create(parser.Node) catch unreachable;
                     value.* = parser.Node.gen(parser.NodeData {
                         .CI_PureC = parser.CI_PureCNode {
-                            .code = std.mem.concat(self.allocator, u8, &[_][]const u8 { "(", class.data.Class.name, "*) self_void"}) catch unreachable,
+                            .code = std.mem.concat(self.allocator, u8, &[_][]const u8 { "(", utils.translateType(class.data.Class.name), "*) self_void"}) catch unreachable,
                         }
                     });
                     var self_type = self.allocator.create(parser.Node) catch unreachable;
-                    void_type.* = parser.Node.gen(parser.NodeData {
+                    self_type.* = parser.Node.gen(parser.NodeData {
                         .VariableCall = parser.VariableCallNode {
                             .name = class.data.Class.name
                         }
                     });
                     var self_ptr_type = self.allocator.create(parser.Node) catch unreachable;
-                    void_ptr_type.* = parser.Node.gen(parser.NodeData {
+                    self_ptr_type.* = parser.Node.gen(parser.NodeData {
                         .PointerCall = parser.PointerCallNode {
                             .node = self_type
                         }
                     });
-                    body.append(parser.Node.gen(parser.NodeData {
+                    // Generate node
+                    const self_var = parser.Node.gen(parser.NodeData {
                         .VariableDefinition = parser.VariableDefinitionNode {
                             .constant = false,
                             .name = "self",
                             .data_type = self_ptr_type,
                             .value = value,
                         }
-                    })) catch unreachable;
+                    });
+                    body.append(self_var) catch unreachable;
 
                     // Generate symbol
-                    self.addSymbol(parser.Symbol.gen(parser.SymbolData {
+                    const self_sym = parser.Symbol.gen(parser.SymbolData {
                         .Variable = parser.VariableSymbol {
                             .name = "self",
-                            .data_type = parser.Node.gen(parser.NodeData {
-                                .PointerCall = parser.PointerCallNode {
-                                    .node = self_type
-                                }
-                            }),
+                            .data_type = self_ptr_type.*,
                             .initialized = true,
                             .constant = true,
                         }
-                    }, parser.Node.NO_ID));
+                    }, self_var.id);
+                    self.addSymbol(self_sym);
+
+                    // Generate info
+                    self.infos.append(parser.NodeInfo {
+                        .node_id = self_var.id,
+                        .position = info.position,
+                        .data_type = self_ptr_type,
+                        .symbol_def = self_sym.id
+                    }) catch unreachable;
                 } else {
                     // Add self parameter
                     var self_type = self.allocator.create(parser.Node) catch unreachable;
@@ -983,7 +1006,11 @@ pub const Generator = struct {
             if (sym.data == parser.SymbolTag.Variable) {
                 var class_name = switch (sym.data.Variable.data_type.data) {
                     .VariableCall => |var_call| var_call.name,
-                    .PointerCall => |ptr_call| ptr_call.node.data.VariableCall.name, // TODO: Change to allow multi ptr and generic ptr.
+                    .PointerCall => |ptr_call| blk: {
+                        // lhs_info.position.errorMessageReturn("", .{});
+                        // sym.data.Variable.data_type.writeXML(std.io.getStdOut().writer(), 0) catch unreachable;
+                        break :blk ptr_call.node.data.VariableCall.name;
+                    }, // TODO: Change to allow multi ptr and generic ptr.
                     .GenericCall => @panic("todo"),
                     else => unreachable
                 };
@@ -1224,6 +1251,10 @@ pub const Generator = struct {
             class_info.position.errorMessageOneLine("Defined here:", .{});
         }
 
+        if (node.data.ExtendStatement.with) |with| {
+            class_sym.data.Class.extensions.append(with.*) catch unreachable;
+        }
+
         // Move symbols
         class_sym.data.Class.children.appendSlice(info.aside_symbols.?.items) catch unreachable;
 
@@ -1342,7 +1373,7 @@ pub const Generator = struct {
         self.symbols.append(parser.Symbol.gen(parser.SymbolData {
             .Class = parser.ClassSymbol {
                 .name = "c_int",
-                .extensions = std.ArrayList([]const u8).init(self.allocator),
+                .extensions = std.ArrayList(parser.Node).init(self.allocator),
                 .children = parser.SymbolList.init(self.allocator),
                 .sealed = false,
             }

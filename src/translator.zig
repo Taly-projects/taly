@@ -1,5 +1,6 @@
 const std = @import("std");
 const parser = @import("parser.zig");
+const utils = @import("utils.zig");
 
 pub const ValueNodeTag = enum {
     String,
@@ -775,11 +776,7 @@ pub const Translator = struct {
     fn translateType(self: *Translator, data_type: []const u8) []const u8 {
         _ = self;
 
-        if (std.mem.eql(u8, data_type, "c_int")) return "int"
-        else if (std.mem.eql(u8, data_type, "c_float")) return "float"
-        else if (std.mem.eql(u8, data_type, "c_string")) return "const char*";
-
-        return data_type;
+        return utils.translateType(data_type);
     }
 
     fn translateTypeNode(self: *Translator, data_type_opt: ?*parser.Node) []const u8 {

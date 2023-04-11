@@ -1203,7 +1203,7 @@ pub const NodeInfo = struct {
             try std.fmt.format(writer, "\t<aside-symbols>{}</aside-symbols>\n", .{aside.items.len});
         }
 
-        try std.fmt.format(writer, "<is-generic>{}</is-generic>", .{self.is_generic});
+        try std.fmt.format(writer, "\t<is-generic>{}</is-generic>\n", .{self.is_generic});
 
         try writer.writeAll("</node-info>\n");
     }
@@ -2492,6 +2492,7 @@ pub const Parser = struct {
         self.advance();
 
         var extensions = std.ArrayList([]const u8).init(self.allocator);
+        var extensions2 = std.ArrayList(Node).init(self.allocator); // TODO: Temporary change node to use an arraylist of node
         if (self.getCurrent() != null) {
             var current = self.getCurrent().?;
             if (current.data.isSymbol(lexer.TokenSymbol.Colon)) {
@@ -2506,7 +2507,13 @@ pub const Parser = struct {
                         if (!current.data.isSymbol(lexer.TokenSymbol.Comma)) break;
                         self.advance();
                     }
-                    extensions.append(self.expectIdentifier()) catch unreachable;
+                    const id = self.expectIdentifier();
+                    extensions.append(id) catch unreachable;
+                    extensions2.append(Node.gen(NodeData {
+                        .VariableCall = VariableCallNode {
+                            .name = id
+                        }
+                    })) catch unreachable;
                     self.advance();
                 }
             }
@@ -2516,7 +2523,7 @@ pub const Parser = struct {
         const sym = symbol.Symbol.gen(symbol.SymbolData {
             .Class = symbol.ClassSymbol {
                 .sealed = sealed,
-                .extensions = extensions,
+                .extensions = extensions2,
                 .name = name,
                 .children = symbol.SymbolList.init(self.allocator),
             }
