@@ -34,9 +34,9 @@ extend Vec1I32 with Cast[Vec2I32]
     fn cast(): Vec2I32 => Vec2I32.create(self.x, 0)
 
 # main function
-fn main() => 
+fn main() =>  
     var my_i32: I32 = 12
-    var my_vec: Vec1I32 = my_i32.cast()
+    var my_vec: Vec1I32 = my_i32 to Vec1I32
     my_vec.print()
-    var my_vec2: Vec2I32 = my_vec.cast()
+    var my_vec2: Vec2I32 = my_vec to Vec2I32
     my_vec2.print()

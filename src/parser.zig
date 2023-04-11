@@ -370,6 +370,7 @@ pub const Operator = enum {
     Not,
     Access,
     Deref,
+    To,
 
     pub fn writeXML(self: *const Operator, writer: anytype, tabs: usize) anyerror!void {
         // Add tabs
@@ -394,6 +395,7 @@ pub const Operator = enum {
             .Not => try writer.writeAll("not"),
             .Access => try writer.writeAll("access"),
             .Deref => try writer.writeAll("deref"),
+            .To => try writer.writeAll("to"),
         }
         try writer.writeAll("</operator\n>");
     }
@@ -1051,6 +1053,21 @@ pub const CI_PureCNode = struct {
     }
 };
 
+// Compiler Instruction - Pre C
+pub const CI_PreCNode = struct {
+    code: []const u8,
+    node: *Node,
+
+    pub fn writeXML(self: *const CI_PreCNode, writer: anytype, tabs: usize, id: usize) anyerror!void {
+        // Add tabs
+        var i: usize = 0;
+        while (i < tabs) : (i += 1) try writer.writeAll("\t");
+
+        try std.fmt.format(writer, "<ci-pre-c id=\"{d}\">{s}</ci-pre-c>\n", .{id, self.code});
+        // TODO: add node for printing
+    }
+};
+
 pub const NodeTag = enum {
     Value,
     FunctionDefinition,
@@ -1075,6 +1092,7 @@ pub const NodeTag = enum {
     GenericCall,
     PointerCall,
     CI_PureC,
+    CI_PreC,
 };
 
 pub const NodeData = union(NodeTag) {
@@ -1101,6 +1119,7 @@ pub const NodeData = union(NodeTag) {
     GenericCall: GenericCallNode,
     PointerCall: PointerCallNode,
     CI_PureC: CI_PureCNode,
+    CI_PreC: CI_PreCNode,
 
     pub fn makeNode(self: NodeData) Node {
         return Node.gen(self);
@@ -1131,6 +1150,7 @@ pub const NodeData = union(NodeTag) {
             .GenericCall => |node| return node.writeXML(writer, tabs, id),
             .PointerCall => |node| return node.writeXML(writer, tabs, id),
             .CI_PureC => |node| return node.writeXML(writer, tabs, id),
+            .CI_PreC => |node| return node.writeXML(writer, tabs, id),
         }
     }
     
@@ -1172,6 +1192,7 @@ pub const NodeInfo = struct {
     renamed: ?[]const u8 = null,
     aside_symbols: ?symbol.SymbolList = null,
     is_generic: bool = false,
+    no_check: bool = false,
 
     pub fn writeXML(self: *const NodeInfo, writer: anytype) anyerror!void {
         try std.fmt.format(writer, "<node-info id=\"{d}\">\n", .{self.node_id});
@@ -1597,6 +1618,8 @@ pub const Parser = struct {
             var operator: Operator = undefined;
             if (current.data.isSymbol(lexer.TokenSymbol.Dot)) {
                 operator = Operator.Access;
+            } else if (current.data.isKeyword(lexer.TokenKeyword.To)) {
+                operator = Operator.To;
             } else {
                 break;
             }

@@ -589,7 +589,6 @@ pub const CI_PureCNode = struct {
     }
 };
 
-
 pub const CI_PreCNode = struct {
     code: []const u8,
     node: *Node,
@@ -863,10 +862,14 @@ pub const Translator = struct {
         const function_call = node.data.FunctionCall;
 
         const info = self.getInfo(node.id).?;
-        const sym = self.getSymbol(info.symbol_call.?).?;
+        
+        var name: []const u8 = node.data.FunctionCall.name;
+        if (!info.no_check) {
+            const sym = self.getSymbol(info.symbol_call.?).?;
+            const sym_node_info = self.getInfo(sym.node_id).?;
 
-        const sym_node_info = self.getInfo(sym.node_id).?;
-        const name = sym_node_info.renamed orelse node.data.FunctionCall.name;
+            name = sym_node_info.renamed orelse node.data.FunctionCall.name;
+        }
 
         // Translate Parameters
         var parameters = NodeList.init(self.allocator);
@@ -1331,6 +1334,25 @@ pub const Translator = struct {
         };
     }
 
+    fn translateCIPreC(self: *Translator, node: parser.Node) NodeList {
+        var nodes = NodeList.init(self.allocator);
+
+        var inner = self.allocator.create(Node) catch unreachable;
+        var res = self.translateNode(node.data.CI_PreC.node.*);
+        inner.* = res.pop();
+        nodes.appendSlice(res.items) catch unreachable;
+
+
+        nodes.append(Node {
+            .CI_PreC = CI_PreCNode {
+                .code = node.data.CI_PreC.code,
+                .node = inner
+            }
+        }) catch unreachable;
+
+        return nodes;
+    }
+
     fn translateExtend(self: *Translator, node: parser.Node) NodeList {
         var nodes = NodeList.init(self.allocator);
 
@@ -1601,6 +1623,7 @@ pub const Translator = struct {
             .GenericCall => nodes.appendSlice(self.translateGenericCall(node).items) catch unreachable,
             .PointerCall => unreachable,
             .CI_PureC => nodes.append(self.translateCIPureC(node)) catch unreachable,
+            .CI_PreC => nodes.appendSlice(self.translateCIPreC(node).items) catch unreachable,
         }
         return nodes;
     }

@@ -963,8 +963,8 @@ pub const Generator = struct {
         } else if (self.scope.getClass(&self.symbols, var_name)) |class| {
             sym = class;
         } else {
-            self.scope.scope.?.writeXML(std.io.getStdOut().writer(), 1) catch unreachable;
-            self.scope.entered.?.writeXML(std.io.getStdOut().writer(), 1) catch unreachable;
+            // self.scope.scope.?.writeXML(std.io.getStdOut().writer(), 1) catch unreachable;
+            // self.scope.entered.?.writeXML(std.io.getStdOut().writer(), 1) catch unreachable;
             info.position.errorMessageReturn("", .{});
             std.log.info("{s} {}", .{var_name, self.scope.entered == null});
             @panic("todo");
@@ -1104,7 +1104,99 @@ pub const Generator = struct {
 
             new_node.data.BinaryOperation.lhs.* = gen_lhs;
             new_node.data.BinaryOperation.rhs.* = gen_rhs;
-        }
+        } else if (node.data.BinaryOperation.operator == parser.Operator.To) {
+            // Generate LHS
+            const gen_lhs = self.generateNode(node.data.BinaryOperation.lhs.*);
+            const lhs_info = self.getInfo(gen_lhs.id).?;
+
+
+            if (lhs_info.symbol_call == null) {
+                @panic("todo");
+            }
+
+            // Get cast function name
+            const sym = self.getSymbol(lhs_info.symbol_call.?).?;
+            var class_name = switch (sym.data.Variable.data_type.data) {
+                .VariableCall => |var_call| var_call.name,
+                .PointerCall => |ptr_call| blk: {
+                    // lhs_info.position.errorMessageReturn("", .{});
+                    // sym.data.Variable.data_type.writeXML(std.io.getStdOut().writer(), 0) catch unreachable;
+                    break :blk ptr_call.node.data.VariableCall.name;
+                }, // TODO: Change to allow multi ptr and generic ptr.
+                .GenericCall => @panic("todo"),
+                else => unreachable
+            };
+
+            if (self.getAlias(class_name)) |sym_alias| {
+                class_name = sym_alias.data.TypeAlias.value;
+            } 
+
+            if (self.getClass(class_name)) |sym_class| {
+                var extension_found = false;
+                for (sym_class.data.Class.extensions.items) |extension| {
+                    if (extension.data == parser.NodeTag.GenericCall) {
+                        if (std.mem.eql(u8, extension.data.GenericCall.name, "Cast")) {
+                            // Get generic symbol
+                            const generic_node: parser.Node = extension.data.GenericCall.parameters.items[0];
+                            var generic_name = switch (generic_node.data) {
+                                .VariableCall => |var_call| var_call.name,
+                                .PointerCall => |ptr_call| ptr_call.node.data.VariableCall.name, // TODO: Change to allow multi ptr and generic ptr.
+                                .GenericCall => @panic("todo"),
+                                else => unreachable
+                            };
+
+                            // Get the symbol for rhs
+                            var rhs_name = switch (node.data.BinaryOperation.rhs.data) {
+                                .VariableCall => |var_call| var_call.name,
+                                .PointerCall => |ptr_call| ptr_call.node.data.VariableCall.name, // TODO: Change to allow multi ptr and generic ptr.
+                                .GenericCall => @panic("todo"),
+                                else => unreachable
+                            };
+
+                            if (std.mem.eql(u8, generic_name, rhs_name)) {
+                                extension_found = true;
+                            }
+                        }
+                    }
+                }
+
+                if (!extension_found) {
+                    @panic("todo");
+                }
+            } else {
+                lhs_info.position.errorMessageReturn("", .{});
+                gen_lhs.writeXML(std.io.getStdOut().writer(), 0) catch unreachable;
+                std.log.info("Could not get class {s}", .{class_name});
+                @panic("todo");
+            }
+
+            const fun_name = std.mem.concat(self.allocator, u8, &[_][]const u8 {
+                class_name,
+                "_cast_Cast_",
+                utils.process_node_name(self.allocator, node.data.BinaryOperation.rhs.*)
+            }) catch unreachable;
+
+            var fun_params = parser.NodeList.init(self.allocator);
+            var inner = self.allocator.create(parser.Node) catch unreachable;
+            inner.* = gen_lhs;
+            fun_params.append(parser.Node.gen(parser.NodeData {
+                .CI_PreC = parser.CI_PreCNode {
+                    .code = "&",
+                    .node = inner
+                }
+            })) catch unreachable;
+
+            new_node.data = parser.NodeData {
+                .FunctionCall = parser.FunctionCallNode {
+                    .name = fun_name,
+                    .parameters = fun_params
+                }
+            };
+
+            const info = self.getInfo(node.id).?;
+            info.data_type = node.data.BinaryOperation.rhs;
+            info.no_check = true;
+        }   
         
         return new_node;
     }
